@@ -1,0 +1,37 @@
+[1.037s] Invoking command in '/home/jensen/haptics_project/src/haptic_device': PYTHONPATH=/home/jensen/haptics_project/build/haptic_device/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jensen/haptics_project/install/haptic_device/lib/python3.12/site-packages:${PYTHONPATH} VIRTUAL_ENV_PROMPT=(haptics) /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/haptic_device build --build-base /home/jensen/haptics_project/build/haptic_device/build install --record /home/jensen/haptics_project/build/haptic_device/install.log --install-scripts $base/lib/haptic_device --single-version-externally-managed install_data
+[1.076s] Traceback (most recent call last):
+[1.076s]   File "/home/jensen/haptics_project/src/haptic_device/setup.py", line 1, in <module>
+[1.076s]     from setuptools import find_packages, setup
+[1.076s]   File "/usr/lib/python3/dist-packages/setuptools/__init__.py", line 7, in <module>
+[1.080s]     import _distutils_hack.override  # noqa: F401
+[1.080s]     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[1.080s]   File "/usr/lib/python3/dist-packages/_distutils_hack/override.py", line 1, in <module>
+[1.080s]     __import__('_distutils_hack').do_override()
+[1.080s]   File "/usr/lib/python3/dist-packages/_distutils_hack/__init__.py", line 77, in do_override
+[1.081s]     ensure_local_distutils()
+[1.081s]   File "/usr/lib/python3/dist-packages/_distutils_hack/__init__.py", line 60, in ensure_local_distutils
+[1.081s]     importlib.import_module('distutils')
+[1.081s]   File "/usr/lib/python3.12/importlib/__init__.py", line 90, in import_module
+[1.084s]     return _bootstrap._gcd_import(name[level:], package, level)
+[1.084s]            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+[1.084s]   File "<frozen importlib._bootstrap>", line 1387, in _gcd_import
+[1.084s]   File "<frozen importlib._bootstrap>", line 1360, in _find_and_load
+[1.084s]   File "<frozen importlib._bootstrap>", line 1322, in _find_and_load_unlocked
+[1.085s]   File "<frozen importlib._bootstrap>", line 1262, in _find_spec
+[1.085s]   File "/usr/lib/python3/dist-packages/_distutils_hack/__init__.py", line 97, in find_spec
+[1.085s]     return method()
+[1.085s]            ^^^^^^^^
+[1.085s]   File "/usr/lib/python3/dist-packages/_distutils_hack/__init__.py", line 104, in spec_for_distutils
+[1.085s]     import importlib.abc
+[1.085s]   File "/usr/lib/python3.12/importlib/abc.py", line 18, in <module>
+[1.087s]     from .resources import abc as _resources_abc
+[1.087s]   File "/usr/lib/python3.12/importlib/resources/__init__.py", line 3, in <module>
+[1.087s]     from ._common import (
+[1.087s]   File "/usr/lib/python3.12/importlib/resources/_common.py", line 12, in <module>
+[1.087s]     from typing import Union, Optional, cast
+[1.087s]   File "/usr/lib/python3.12/typing.py", line 3242, in <module>
+[1.087s]     class TextIO(IO[str]):
+[1.087s]                  ~~^^^^^
+[1.088s]   File "<frozen importlib._bootstrap>", line 463, in _lock_unlock_module
+[1.088s] KeyboardInterrupt
+[1.096s] Invoked command in '/home/jensen/haptics_project/src/haptic_device' returned '-2': PYTHONPATH=/home/jensen/haptics_project/build/haptic_device/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jensen/haptics_project/install/haptic_device/lib/python3.12/site-packages:${PYTHONPATH} VIRTUAL_ENV_PROMPT=(haptics) /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/haptic_device build --build-base /home/jensen/haptics_project/build/haptic_device/build install --record /home/jensen/haptics_project/build/haptic_device/install.log --install-scripts $base/lib/haptic_device --single-version-externally-managed install_data

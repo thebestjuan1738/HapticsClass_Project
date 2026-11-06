@@ -1,0 +1,2 @@
+[console_scripts]
+interface_node = user_interface.interface_loop:main
