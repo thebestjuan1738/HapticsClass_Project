@@ -1,0 +1,22 @@
+[0.735s] Invoking command in '/home/jensen/haptics_project/src/haptic_device': PYTHONPATH=/home/jensen/haptics_project/build/haptic_device/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jensen/haptics_project/install/haptic_device/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/haptic_device build --build-base /home/jensen/haptics_project/build/haptic_device/build install --record /home/jensen/haptics_project/build/haptic_device/install.log --install-scripts $base/lib/haptic_device --single-version-externally-managed install_data
+[0.904s] running egg_info
+[0.916s] writing ../../build/haptic_device/haptic_device.egg-info/PKG-INFO
+[0.916s] writing dependency_links to ../../build/haptic_device/haptic_device.egg-info/dependency_links.txt
+[0.917s] writing entry points to ../../build/haptic_device/haptic_device.egg-info/entry_points.txt
+[0.917s] writing requirements to ../../build/haptic_device/haptic_device.egg-info/requires.txt
+[0.917s] writing top-level names to ../../build/haptic_device/haptic_device.egg-info/top_level.txt
+[0.938s] reading manifest file '../../build/haptic_device/haptic_device.egg-info/SOURCES.txt'
+[0.939s] writing manifest file '../../build/haptic_device/haptic_device.egg-info/SOURCES.txt'
+[0.939s] running build
+[0.939s] running build_py
+[0.939s] running install
+[0.943s] running install_lib
+[0.953s] running install_data
+[0.953s] running install_egg_info
+[0.964s] removing '/home/jensen/haptics_project/install/haptic_device/lib/python3.12/site-packages/haptic_device-0.0.0-py3.12.egg-info' (and everything under it)
+[0.964s] Copying ../../build/haptic_device/haptic_device.egg-info to /home/jensen/haptics_project/install/haptic_device/lib/python3.12/site-packages/haptic_device-0.0.0-py3.12.egg-info
+[0.964s] running install_scripts
+[1.051s] Installing haptic_loop script to /home/jensen/haptics_project/install/haptic_device/lib/haptic_device
+[1.052s] Installing haptic_node script to /home/jensen/haptics_project/install/haptic_device/lib/haptic_device
+[1.052s] writing list of installed files to '/home/jensen/haptics_project/build/haptic_device/install.log'
+[1.075s] Invoked command in '/home/jensen/haptics_project/src/haptic_device' returned '0': PYTHONPATH=/home/jensen/haptics_project/build/haptic_device/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jensen/haptics_project/install/haptic_device/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/haptic_device build --build-base /home/jensen/haptics_project/build/haptic_device/build install --record /home/jensen/haptics_project/build/haptic_device/install.log --install-scripts $base/lib/haptic_device --single-version-externally-managed install_data

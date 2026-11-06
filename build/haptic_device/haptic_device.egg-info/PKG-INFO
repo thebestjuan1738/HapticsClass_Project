@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: haptic-device
+Version: 0.0.0
+Summary: Haptic Device Sensing and Environment
+Maintainer: Jensen Coombs
+Maintainer-email: jensencoombs@gmail.com
+License: Apache License 2.0
+Provides-Extra: test

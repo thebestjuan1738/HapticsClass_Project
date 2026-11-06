@@ -1,0 +1,24 @@
+[1.117s] Invoking command in '/home/jensen/haptics_project/src/user_interface': PYTHONPATH=/home/jensen/haptics_project/build/user_interface/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jensen/haptics_project/install/user_interface/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/user_interface build --build-base /home/jensen/haptics_project/build/user_interface/build install --record /home/jensen/haptics_project/build/user_interface/install.log --install-scripts $base/lib/user_interface --single-version-externally-managed install_data
+[1.377s] running egg_info
+[1.400s] writing ../../build/user_interface/user_interface.egg-info/PKG-INFO
+[1.400s] writing dependency_links to ../../build/user_interface/user_interface.egg-info/dependency_links.txt
+[1.401s] writing entry points to ../../build/user_interface/user_interface.egg-info/entry_points.txt
+[1.401s] writing requirements to ../../build/user_interface/user_interface.egg-info/requires.txt
+[1.401s] writing top-level names to ../../build/user_interface/user_interface.egg-info/top_level.txt
+[1.447s] reading manifest file '../../build/user_interface/user_interface.egg-info/SOURCES.txt'
+[1.448s] writing manifest file '../../build/user_interface/user_interface.egg-info/SOURCES.txt'
+[1.448s] running build
+[1.448s] running build_py
+[1.449s] copying user_interface/interface_loop.py -> /home/jensen/haptics_project/build/user_interface/build/lib/user_interface
+[1.449s] running install
+[1.458s] running install_lib
+[1.485s] copying /home/jensen/haptics_project/build/user_interface/build/lib/user_interface/interface_loop.py -> /home/jensen/haptics_project/install/user_interface/lib/python3.12/site-packages/user_interface
+[1.487s] byte-compiling /home/jensen/haptics_project/install/user_interface/lib/python3.12/site-packages/user_interface/interface_loop.py to interface_loop.cpython-312.pyc
+[1.489s] running install_data
+[1.490s] running install_egg_info
+[1.515s] removing '/home/jensen/haptics_project/install/user_interface/lib/python3.12/site-packages/user_interface-0.0.0-py3.12.egg-info' (and everything under it)
+[1.516s] Copying ../../build/user_interface/user_interface.egg-info to /home/jensen/haptics_project/install/user_interface/lib/python3.12/site-packages/user_interface-0.0.0-py3.12.egg-info
+[1.519s] running install_scripts
+[1.655s] Installing interface_node script to /home/jensen/haptics_project/install/user_interface/lib/user_interface
+[1.655s] writing list of installed files to '/home/jensen/haptics_project/build/user_interface/install.log'
+[1.686s] Invoked command in '/home/jensen/haptics_project/src/user_interface' returned '0': PYTHONPATH=/home/jensen/haptics_project/build/user_interface/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jensen/haptics_project/install/user_interface/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/user_interface build --build-base /home/jensen/haptics_project/build/user_interface/build install --record /home/jensen/haptics_project/build/user_interface/install.log --install-scripts $base/lib/user_interface --single-version-externally-managed install_data
