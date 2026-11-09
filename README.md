@@ -22,6 +22,46 @@ Pulse sensor test sketch (not yet part of the bridge): `TestFiles/TestPulse/Test
 Check it live with `python TestFiles/plot_serial.py`, then move it into `arduino/`.
 Same `label:value` format as EDA, and the pins don't collide (EDA A0, pulse A1).
 
+### Pressure sensor (square FSR) test sketch
+`TestFiles/TestPressure/TestPressure.ino`, on **A2** (EDA A0, pulse A1).
+Prints `ms,raw,smoothed,volts,fsr_kohm,delta,rate` at 50 Hz.
+`delta` is force relative to a no-load zero taken for 1 s after reset (keep the
+sensor unloaded; press reset to re-zero), and `rate` is counts/s over 100 ms.
+
+Wiring is a voltage divider with the sensor and resistor **in series** and A2
+on the junction between them:
+```
+5V ── FSR ──┬── A2
+            │
+          1 kΩ
+            │
+           GND
+```
+Lessons from bench testing:
+- **Resistor choice:** 1 kΩ works. With 10 kΩ a moderate press saturated the
+  ADC (about 1000 counts) and the node picked up noise in the lab. A smaller
+  resistor takes a smaller share of the 5 V, so the sensor must fall much
+  further to reach the ceiling (less sensitive, wider range). Try 2.2-3.3 kΩ
+  if light changes are hard to see. Set `R_FIXED_OHMS` to match so `fsr_kohm`
+  is right.
+- **Mount it flat:** a bent or face-down sensor is preloaded and read about 200
+  counts unloaded. Lay it flat on a rigid surface, active side up, and tape only
+  the edges. Press through a flat contact (foam or rubber spreads the force).
+- **Wiring mistake to avoid:** a resistor from 5V straight to GND leaves A2
+  floating. A floating pin reads arbitrary values (about 200, wandering), which
+  is not a board fault. Shorting A2 to GND should read 0.
+- **Noise:** optionally add 0.1 uF from A2 to GND and keep the leads short.
+- An FSR is a rough force indicator, not a calibrated scale. Compare relative
+  changes within a session.
+- **R4 Minima:** shows up as a new COM port (it was COM4). Needs the "Arduino
+  UNO R4 Boards" core, a USB-C **data** cable, and a double-tap of reset if an
+  upload can't find the board. It does not reset when the serial port opens, so
+  the startup zero only happens at power-up or reset.
+
+**Plotting/logging:** `python TestFiles/plot_serial.py [COMx] [seconds] [--csv [FILE]]`
+plots every field it finds, and `--csv` logs every line to
+`TestFiles/logs/serial_<timestamp>.csv` (git-ignored).
+
 ### Pulse sensor: known problems (to fix later)
 `TestPulse.ino` works at rest (about 50 bpm, beats line up with the red dots),
 but the beat detector breaks down under motion or exertion:
