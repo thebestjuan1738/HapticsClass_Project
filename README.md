@@ -13,8 +13,42 @@ Reads the Arduino's USB serial stream and publishes each field as a
 Fields are discovered automatically, so a new sensor only needs new
 `label:value` pairs in the Arduino sketch.
 
-**Arduino side:** flash `src/sensor_bridge/arduino/eda_stream/eda_stream.ino`.
-Each line is `ms:..,raw:..,smoothed:..,delta:..,volts:..` at 115200 baud.
+**Arduino side:** flash one of the sketches in `src/sensor_bridge/arduino/`:
+- `eda_stream/eda_stream.ino` - EDA sensor on A0. Lines are
+  `ms:..,raw:..,smoothed:..,delta:..,volts:..` at 115200 baud.
+
+Pulse sensor test sketch (not yet part of the bridge): `TestFiles/TestPulse/TestPulse.ino`
+(purple->A1, red->5V, black->GND). Lines are `ms:..,signal:..,bpm:..,ibi:..,beat:..`.
+Check it live with `python TestFiles/plot_serial.py`, then move it into `arduino/`.
+Same `label:value` format as EDA, and the pins don't collide (EDA A0, pulse A1).
+
+### Pulse sensor: known problems (to fix later)
+`TestPulse.ino` works at rest (about 50 bpm, beats line up with the red dots),
+but the beat detector breaks down under motion or exertion:
+- **Breathing/motion artifacts:** exhaling hard gave readings around 160 bpm.
+  Pressure and finger movement swing the signal, the adaptive threshold gets
+  pulled off, and extra crossings are counted as beats. A false short interval
+  also shrinks the refractory gap, so false beats get easier (runaway).
+- **Running in place:** tracking was accurate at first and got less physical
+  as exertion increased.
+- **Stopping after exertion:** `bpm` dropped to 0 and stayed there until the
+  finger had been still for a while. The threshold only updates on a detected
+  beat, so it stays set for the large exertion signal and the smaller resting
+  pulses never cross it. The 2.5 s no-beat reset then relearns from scratch.
+- **`ibi` looks like a staircase:** it only updates once per beat (about once a
+  second) and is held between beats. This is expected, not a bug. `bpm` is a
+  10-beat average, so it also moves in steps.
+
+Ideas tried and dropped (denoising attempts did not work well):
+- Baseline removal plus smoothing, a 300-1500 ms interval limit, a 35%
+  tolerance around the median, and a median of 10 beats. The 35% limit
+  rejected real fast changes after exercise, 5 rejects wiped the rhythm to 0,
+  and the median lagged.
+- Next attempt (not yet tested): a decaying envelope so the threshold also
+  falls when the signal shrinks, beat-to-beat bpm with no averaging, only
+  relative checks against the last interval, and a detector that keeps running
+  after signal loss so bpm returns within two beats.
+
 
 **Run:**
 ```
