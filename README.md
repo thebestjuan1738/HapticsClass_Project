@@ -24,6 +24,20 @@ Fields are discovered automatically, so a new sensor only needs new
 Check any of them live with `python TestFiles/plot_serial.py`. All use the same
 `label:value` format and different pins (EDA A0, pulse A1, pressure A2).
 
+### Temperature sensor (SparkFun LilyPad, DEV-08777)
+`TestFiles/TestTemp/TestTemp.ino`, on **A3**. Pads: S -> A3, + -> 3.3V, - -> GND.
+Prints `ms,raw,volts,temp_c,delta_c` at 10 Hz. From the SparkFun repo
+(sparkfun/LilyPad_Temperature_Sensor): the output is analog, 0.5 V at 0 C,
+0.75 V at 25 C, 10 mV per degree C, so `temp_c = (volts - 0.5) * 100`.
+- SparkFun's example converts with `3.3 / 1023`. That is only right for a 3.3 V,
+  10-bit board. Our sketch uses the real ADC reference (5 V) and resolution
+  (14-bit on the R4), otherwise the temperatures would be wrong.
+- At 10 mV/C a 10-bit read is about 0.5 C per count; 14-bit is about 0.03 C.
+- The repo does not state accuracy, supply range, or operating range. Treat
+  absolute values as rough and trust changes within a session. Tape it flat to
+  the skin and let it settle for about a minute.
+- `delta_c` is relative to the first second after reset (keep it in contact).
+
 ### Sampling rates and resolution
 Only the lines the Arduino **prints** reach the PC, so the logged rate is the
 print rate, not the internal sampling rate.
@@ -32,6 +46,7 @@ print rate, not the internal sampling rate.
 |---|---|---|---|---|
 | `TestFiles/TestEda` | A0 | 50 Hz (smoothing) | 10 Hz | 14-bit on R4, 10-bit on R3 |
 | `TestFiles/TestPressure` | A2 | 200 Hz | 50 Hz | 14-bit on R4, 10-bit on R3 |
+| `TestFiles/TestTemp` | A3 | 50 Hz (8-read average) | 10 Hz | 14-bit on R4, 10-bit on R3 |
 | `TestFiles/TestPulse` | A1 | 500 Hz | 50 Hz | 10-bit (kept at 10-bit, see below) |
 
 **Policy:** all raw data collection should use the **R4 at 14-bit** (counts
