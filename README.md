@@ -13,14 +13,16 @@ Reads the Arduino's USB serial stream and publishes each field as a
 Fields are discovered automatically, so a new sensor only needs new
 `label:value` pairs in the Arduino sketch.
 
-**Arduino side:** flash one of the sketches in `src/sensor_bridge/arduino/`:
-- `eda_stream/eda_stream.ino` - EDA sensor on A0. Lines are
-  `ms:..,raw:..,smoothed:..,delta:..,volts:..` at 115200 baud.
+**Arduino side:** the sketches live in `TestFiles/` (the bridge reads any
+`label:value,...` line, so no sketch is tied to the package):
+- `TestFiles/TestEda/TestEda.ino` - EDA sensor on A0. Lines are
+  `raw:..,smoothed:..,delta:..,volts:..` at 115200 baud.
+- `TestFiles/TestPulse/TestPulse.ino` - pulse sensor on A1 (purple->A1,
+  red->5V, black->GND). Lines are `ms:..,signal:..,bpm:..,ibi:..,beat:..`.
+- `TestFiles/TestPressure/TestPressure.ino` - pressure sensor on A2 (below).
 
-Pulse sensor test sketch (not yet part of the bridge): `TestFiles/TestPulse/TestPulse.ino`
-(purple->A1, red->5V, black->GND). Lines are `ms:..,signal:..,bpm:..,ibi:..,beat:..`.
-Check it live with `python TestFiles/plot_serial.py`, then move it into `arduino/`.
-Same `label:value` format as EDA, and the pins don't collide (EDA A0, pulse A1).
+Check any of them live with `python TestFiles/plot_serial.py`. All use the same
+`label:value` format and different pins (EDA A0, pulse A1, pressure A2).
 
 ### Sampling rates and resolution
 Only the lines the Arduino **prints** reach the PC, so the logged rate is the
@@ -28,10 +30,9 @@ print rate, not the internal sampling rate.
 
 | Sketch | Pin | Internal sampling | Printed / logged | ADC resolution |
 |---|---|---|---|---|
-| `src/sensor_bridge/arduino/eda_stream` | A0 | 50 Hz (smoothing) | 10 Hz | 14-bit on R4, 10-bit on R3 |
-| `TestFiles/TestEda` (test only) | A0 | 50 Hz (smoothing) | 10 Hz | 10-bit, left unchanged |
+| `TestFiles/TestEda` | A0 | 50 Hz (smoothing) | 10 Hz | 14-bit on R4, 10-bit on R3 |
 | `TestFiles/TestPressure` | A2 | 200 Hz | 50 Hz | 14-bit on R4, 10-bit on R3 |
-| `TestFiles/TestPulse` | A1 | 500 Hz | 50 Hz | 10-bit (**TODO: 14-bit**) |
+| `TestFiles/TestPulse` | A1 | 500 Hz | 50 Hz | 10-bit (kept at 10-bit, see below) |
 
 **Policy:** all raw data collection should use the **R4 at 14-bit** (counts
 0-16383, step about 0.3 mV at 5 V). The R3 and the 10-bit test sketches are for
@@ -39,7 +40,7 @@ bench checks only. Record the resolution with every session, because counts
 are 16x larger at 14-bit and old and new logs are not directly comparable.
 
 Open items for later:
-- **TestPulse is still 10-bit.** Its beat detector thresholds (512 center,
+- **TestPulse stays 10-bit.** Its beat detector thresholds (512 center,
   530/100 starting values) are in 10-bit counts. To move to 14-bit, read at
   14-bit and shift down by 4 for the detector, or retune it, and log the 14-bit
   `signal`.

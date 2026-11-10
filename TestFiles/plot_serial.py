@@ -1,6 +1,6 @@
 """Live plot of any Arduino sketch that prints 'label:value,label:value,...'.
 
-Works with eda_stream.ino, pulse_stream.ino, or anything new: one subplot is
+Works with TestEda, TestPulse, TestPressure, or anything new: one subplot is
 made for every field it finds.
   - 'ms' (if present) is used as the time axis.
   - 'beat' (if present) is drawn as red markers on the first subplot instead
