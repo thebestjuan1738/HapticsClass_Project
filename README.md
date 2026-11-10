@@ -22,6 +22,34 @@ Pulse sensor test sketch (not yet part of the bridge): `TestFiles/TestPulse/Test
 Check it live with `python TestFiles/plot_serial.py`, then move it into `arduino/`.
 Same `label:value` format as EDA, and the pins don't collide (EDA A0, pulse A1).
 
+### Sampling rates and resolution
+Only the lines the Arduino **prints** reach the PC, so the logged rate is the
+print rate, not the internal sampling rate.
+
+| Sketch | Pin | Internal sampling | Printed / logged | ADC resolution |
+|---|---|---|---|---|
+| `src/sensor_bridge/arduino/eda_stream` | A0 | 50 Hz (smoothing) | 10 Hz | 14-bit on R4, 10-bit on R3 |
+| `TestFiles/TestEda` (test only) | A0 | 50 Hz (smoothing) | 10 Hz | 10-bit, left unchanged |
+| `TestFiles/TestPressure` | A2 | 200 Hz | 50 Hz | 14-bit on R4, 10-bit on R3 |
+| `TestFiles/TestPulse` | A1 | 500 Hz | 50 Hz | 10-bit (**TODO: 14-bit**) |
+
+**Policy:** all raw data collection should use the **R4 at 14-bit** (counts
+0-16383, step about 0.3 mV at 5 V). The R3 and the 10-bit test sketches are for
+bench checks only. Record the resolution with every session, because counts
+are 16x larger at 14-bit and old and new logs are not directly comparable.
+
+Open items for later:
+- **TestPulse is still 10-bit.** Its beat detector thresholds (512 center,
+  530/100 starting values) are in 10-bit counts. To move to 14-bit, read at
+  14-bit and shift down by 4 for the detector, or retune it, and log the 14-bit
+  `signal`.
+- **Pulse timing:** it samples at 500 Hz but prints only 50 Hz, so beat timing
+  in the logs is limited to 20 ms. For heart-rate variability, stream every
+  sample (about 15 KB/s, so use roughly 500000 baud) and detect beats in
+  Python offline.
+- **EDA timing:** the printed `raw` is a fresh read at print time, separate from
+  the 50 Hz smoothing samples.
+
 ### Pressure sensor (square FSR) test sketch
 `TestFiles/TestPressure/TestPressure.ino`, on **A2** (EDA A0, pulse A1).
 Prints `ms,raw,smoothed,volts,fsr_kohm,delta,rate` at 50 Hz.
@@ -51,6 +79,8 @@ Lessons from bench testing:
   floating. A floating pin reads arbitrary values (about 200, wandering), which
   is not a board fault. Shorting A2 to GND should read 0.
 - **Noise:** optionally add 0.1 uF from A2 to GND and keep the leads short.
+- **ADC resolution:** see "Sampling rates and resolution" above. The pressure
+  sketch reads at 14-bit on the R4 (counts 0-16383) and 10-bit on the R3.
 - An FSR is a rough force indicator, not a calibrated scale. Compare relative
   changes within a session.
 - **R4 Minima:** shows up as a new COM port (it was COM4). Needs the "Arduino

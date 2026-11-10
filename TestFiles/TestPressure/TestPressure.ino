@@ -32,7 +32,7 @@
   Serial at 115200 baud, 50 lines per second. Output:
     ms:..,raw:..,smoothed:..,volts:..,fsr_kohm:..,delta:..,rate:..
       ms        millis() at print time
-      raw       ADC counts (0-1023)
+      raw       ADC counts (0-1023 on R3, 0-16383 on R4)
       smoothed  light low-pass of raw
       volts     smoothed, in volts
       fsr_kohm  FSR resistance in kilohms (0 means no/negligible force)
@@ -48,7 +48,14 @@
 
 const uint8_t  FSR_PIN          = A2;
 const float    ADC_REF_VOLTS    = 5.0;
-const uint16_t ADC_MAX          = 1023;
+// ADC resolution: the R4 can read 14-bit (16x finer steps); the R3 is 10-bit.
+// This picks the right one for whichever board the sketch is built for.
+#if defined(ARDUINO_UNOR4_MINIMA) || defined(ARDUINO_UNOR4_WIFI) || defined(ARDUINO_ARCH_RENESAS_UNO)
+  #define ADC_BITS 14
+#else
+  #define ADC_BITS 10
+#endif
+const uint16_t ADC_MAX          = (1 << ADC_BITS) - 1;   // 1023 on R3, 16383 on R4
 const float    R_FIXED_OHMS     = 1000.0;    // the resistor to GND
 const uint16_t SAMPLE_PERIOD_MS = 5;         // 200 Hz sampling
 const uint16_t PRINT_PERIOD_MS  = 20;        // 50 Hz printing
@@ -68,6 +75,9 @@ int      raw         = 0;
 void setup() {
   Serial.begin(115200);
   pinMode(FSR_PIN, INPUT);
+#if ADC_BITS > 10
+  analogReadResolution(ADC_BITS);
+#endif
   Serial.println(F("Pressure sensor test starting..."));
   smoothed = analogRead(FSR_PIN);
 
