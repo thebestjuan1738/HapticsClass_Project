@@ -38,6 +38,56 @@ Prints `ms,raw,volts,temp_c,delta_c` at 10 Hz. From the SparkFun repo
   the skin and let it settle for about a minute.
 - `delta_c` is relative to the first second after reset (keep it in contact).
 
+### Combined test: all sensors at 1 kHz (`TestAll.ino` + `plot_all.py`)
+`TestFiles/TestAll/TestAll.ino` samples EDA (A0), pulse (A1), pressure (A2) and
+temperature (A3) in the **same tick** at 1000 Hz (to be close to the haptics
+loop), 14-bit on the R4, and prints one line per tick. The 1 kHz rate is one
+constant (`SAMPLE_RATE_HZ`); smoothing time constants, the pulse detector clock
+and the schedule all derive from it. The raw `pulse` channel is logged at the
+full rate (the on-board beat detector still gets a 10-bit copy, since its
+thresholds are tuned in 10-bit counts), so beats can be re-detected offline.
+
+```
+python TestFiles/plot_all.py COM4 15            # dashboard: one row per sensor
+python TestFiles/plot_all.py COM4 15 --csv      # also log every line to TestFiles/logs/
+```
+The title shows the measured lines/s and the Arduino's overruns since connect.
+Result: **0 overruns at 1 kHz**. Fields: `ms, ovr, eda, eda_s, eda_d, pulse, bpm,
+ibi, beat, force, force_s, force_d, force_rate, temp, temp_c, temp_d, acq_us,
+tot_us` (`*_d` are relative to the first 2 s after reset, so keep sensors in
+place and the pressure sensor unloaded then; press reset to re-zero).
+
+What we learned getting there:
+- **Sensing was cheap, printing was not.** Reading all four sensors plus the
+  pulse detector takes about 200 us per tick (`acq_us`). About 35 separate
+  `Serial.print` calls per line caused the overruns. Each line is now built in a
+  buffer with integer math and sent with one `Serial.write` (whole tick about
+  700 us of the 1000 us budget, so headroom is about 30%). If overruns return,
+  print every 2nd tick (`PRINT_EVERY_N`) or drop the derived fields, which can be
+  recomputed offline.
+- **`DRY_RUN`** (set to 1 in the sketch) samples at full rate and prints one
+  summary line per second, which separates acquisition time from printing time.
+- **A slip no longer causes a burst.** The old schedule ran missed ticks back to
+  back to catch up, giving bunched timestamps and an overrun count that kept
+  climbing. Now a slip counts one overrun, skips the missed ticks and resyncs, so
+  it shows up as a gap in `ms`.
+- **Python must read in chunks.** pyserial's `readline()` reads one byte at a
+  time and froze the plot at about 200 KB/s. `plot_all.py` reads on a background
+  thread in bulk and thins the points it draws. `plot_serial.py` still uses
+  `readline()`, so use it only for the slow single-sensor sketches.
+- **Each ADC read is preceded by a throwaway read** so the shared ADC settles
+  on the new channel (matters for the high-impedance EDA and pressure nodes).
+- **`ms` has 1 ms resolution**, so at 1 kHz it can repeat or skip a value by
+  jitter. The board's `ms` restarts at 0 on reset; the CSV `pc_s` column gives
+  PC time since logging started.
+- **The ROS bridge can't take this stream.** 1000 lines/s x 18 fields is about
+  18000 messages/s, more than the Python bridge keeps up with. Log with `--csv`
+  for now.
+- **The haptic node's data is about 100 Hz.** `haptic_loop.py` publishes from a
+  0.01 s ROS timer even if the device servo loop runs near 1 kHz, so the streams
+  are not matched at 1 kHz on the ROS side unless that timer is sped up or the
+  haptic data is recorded inside the device callback.
+
 ### Sampling rates and resolution
 Only the lines the Arduino **prints** reach the PC, so the logged rate is the
 print rate, not the internal sampling rate.
@@ -48,6 +98,7 @@ print rate, not the internal sampling rate.
 | `TestFiles/TestPressure` | A2 | 200 Hz | 50 Hz | 14-bit on R4, 10-bit on R3 |
 | `TestFiles/TestTemp` | A3 | 50 Hz (8-read average) | 10 Hz | 14-bit on R4, 10-bit on R3 |
 | `TestFiles/TestPulse` | A1 | 500 Hz | 50 Hz | 10-bit (kept at 10-bit, see below) |
+| `TestFiles/TestAll` (all four sensors) | A0-A3 | 1000 Hz on R4 (250 Hz on R3) | 1000 Hz | 14-bit on R4 (pulse detector fed 10-bit) |
 
 **Policy:** all raw data collection should use the **R4 at 14-bit** (counts
 0-16383, step about 0.3 mV at 5 V). The R3 and the 10-bit test sketches are for
