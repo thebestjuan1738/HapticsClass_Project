@@ -1,3 +1,0 @@
-[console_scripts]
-haptic_loop = haptic_device.haptic_loop:main
-haptic_node = haptic_device.start_haptics:main

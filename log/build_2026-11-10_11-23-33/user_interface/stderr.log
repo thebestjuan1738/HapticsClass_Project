@@ -1,2 +1,0 @@
-/home/jensen/haptics_project/install/user_interface/lib/python3.12/site-packages/user_interface/interface_loop.py:160: SyntaxWarning: "is not" with 'int' literal. Did you mean "!="?
-  elif prev_drawn_line is not 0:

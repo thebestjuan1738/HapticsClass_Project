@@ -1,2 +1,0 @@
-/home/jensen/haptics_project/install/user_interface/lib/python3.12/site-packages/user_interface/interface_loop.py:133: SyntaxWarning: "is not" with 'int' literal. Did you mean "!="?
-  if node.force[1] is not 0:          # If left mouse button is clicked, draws a connecting line on the drawn_lines surface

@@ -1,2 +1,0 @@
-[console_scripts]
-database_node = save_data.database_loop:main
