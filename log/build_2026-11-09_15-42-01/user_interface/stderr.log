@@ -1,0 +1,5 @@
+  File "/home/jensen/haptics_project/install/user_interface/lib/python3.12/site-packages/user_interface/interface_loop.py", line 143
+    if # rect_collide or something like that
+       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: invalid syntax
+
