@@ -1,0 +1,24 @@
+[2.709s] Invoking command in '/home/jensen/haptics_project/src/save_data': PYTHONPATH=/home/jensen/haptics_project/build/save_data/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jensen/haptics_project/install/save_data/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/save_data build --build-base /home/jensen/haptics_project/build/save_data/build install --record /home/jensen/haptics_project/build/save_data/install.log --install-scripts $base/lib/save_data --single-version-externally-managed install_data
+[2.890s] running egg_info
+[2.906s] writing ../../build/save_data/save_data.egg-info/PKG-INFO
+[2.907s] writing dependency_links to ../../build/save_data/save_data.egg-info/dependency_links.txt
+[2.907s] writing entry points to ../../build/save_data/save_data.egg-info/entry_points.txt
+[2.907s] writing requirements to ../../build/save_data/save_data.egg-info/requires.txt
+[2.907s] writing top-level names to ../../build/save_data/save_data.egg-info/top_level.txt
+[2.927s] reading manifest file '../../build/save_data/save_data.egg-info/SOURCES.txt'
+[2.933s] writing manifest file '../../build/save_data/save_data.egg-info/SOURCES.txt'
+[2.934s] running build
+[2.934s] running build_py
+[2.934s] copying save_data/database_loop.py -> /home/jensen/haptics_project/build/save_data/build/lib/save_data
+[2.948s] running install
+[2.953s] running install_lib
+[2.967s] copying /home/jensen/haptics_project/build/save_data/build/lib/save_data/database_loop.py -> /home/jensen/haptics_project/install/save_data/lib/python3.12/site-packages/save_data
+[2.970s] byte-compiling /home/jensen/haptics_project/install/save_data/lib/python3.12/site-packages/save_data/database_loop.py to database_loop.cpython-312.pyc
+[2.971s] running install_data
+[2.971s] running install_egg_info
+[2.986s] removing '/home/jensen/haptics_project/install/save_data/lib/python3.12/site-packages/save_data-0.0.0-py3.12.egg-info' (and everything under it)
+[2.986s] Copying ../../build/save_data/save_data.egg-info to /home/jensen/haptics_project/install/save_data/lib/python3.12/site-packages/save_data-0.0.0-py3.12.egg-info
+[2.991s] running install_scripts
+[3.096s] Installing database_node script to /home/jensen/haptics_project/install/save_data/lib/save_data
+[3.096s] writing list of installed files to '/home/jensen/haptics_project/build/save_data/install.log'
+[3.194s] Invoked command in '/home/jensen/haptics_project/src/save_data' returned '0': PYTHONPATH=/home/jensen/haptics_project/build/save_data/prefix_override:/usr/lib/python3/dist-packages/colcon_core/task/python/colcon_distutils_commands:/home/jensen/haptics_project/install/save_data/lib/python3.12/site-packages:${PYTHONPATH} /usr/bin/python3 -W ignore:setup.py install is deprecated -W ignore:easy_install command is deprecated setup.py egg_info --egg-base ../../build/save_data build --build-base /home/jensen/haptics_project/build/save_data/build install --record /home/jensen/haptics_project/build/save_data/install.log --install-scripts $base/lib/save_data --single-version-externally-managed install_data

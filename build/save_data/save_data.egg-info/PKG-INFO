@@ -1,0 +1,8 @@
+Metadata-Version: 2.1
+Name: save-data
+Version: 0.0.0
+Summary: Saves data to a sqlite database
+Maintainer: jensen
+Maintainer-email: jensen.coombs@my.utexas.edu
+License: Apache License 2.0
+Provides-Extra: test

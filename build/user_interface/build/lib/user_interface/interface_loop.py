@@ -5,7 +5,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Int8
 from geometry_msgs.msg import Point
 
 # Global screen dimensional parameters
@@ -21,12 +21,18 @@ class Interface_Node(Node):
         self.subscriber_force = self.create_subscription(Point,'force_topic',self.callback_force,1)
         self.subscriber_button = self.create_subscription(Bool, 'button_topic',self.callback_button,1)
 
+        self.publisher_screen = self.create_publisher(Int8,'screen_topic',10)
+
         self.position = [0, 0, 0]
         self.position_limits = 40      # i.e. allowable in each direction from haptic device [mm]
 
         self.force = [0, 0, 0]
 
+        self.curr_screen_flag = 0
+
         self.button = False
+
+        self.screen_timer = self.create_timer(0.05, self.publish_screen)
 
         
 
@@ -48,16 +54,21 @@ class Interface_Node(Node):
 
         # self.get_logger().info('Button pressed: %s' % self.button)
 
+    def publish_screen(self):
+        msg_screen = Int8(data=self.curr_screen_flag)
+        self.publisher_screen.publish(msg_screen)
+
+        # self.get_logger().info('Current game screen: %i' % msg_screen.data)
+
 
 
 def main(args=None):
         rclpy.init(args=args)
         node = Interface_Node()
 
-
         pygame.init()   # Begins the Game/Defines the game object
 
-        font = pygame.font.Font(None, 24)
+        button_font = pygame.font.Font(None, 32)
 
         # Setting Screen Parameters
         screen_color = (255,255,255)
@@ -86,7 +97,7 @@ def main(args=None):
         # Initializing a surface vector for drawn lines
         drawn_lines = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
         prev_drawn_line = 0
-        line_width = 5
+        line_width = 40
 
         # Creating a surface for a button to initialize next screen of the experiment
         NEXT_BUTTON_WIDTH = 200
@@ -97,54 +108,85 @@ def main(args=None):
         next_button.fill((255,0,0))
         next_button_box = next_button.get_rect(topleft=next_button_pos)
 
-        next_button_text = font.render("Next Screen", True, (0, 0, 0))
+        next_button_text = button_font.render("Evaluate Design", True, (0, 0, 0))
         next_button_text_box = next_button_text.get_rect(center=(NEXT_BUTTON_WIDTH//2,NEXT_BUTTON_HEIGHT//2))
-        next_button.blit(next_button_text,next_button_text_box)
+        # next_button.blit(next_button_text,next_button_text_box)
 
-        screen_index = 0
+        # Flag Variable to track current screen
+        # curr_screen_flag = 0
 
 
         # Initializing running game loop
         running_flag = True
-        draw_flag = False
         try:
             while running_flag == True and rclpy.ok():
-
-                # Displays all current surfaces to update graphics
-                screen.fill(screen_color)
-
-                screen.blit(drawn_lines, (0,0))
                 
-                screen.blit(next_button, next_button_box)
-
-                rclpy.spin_once(node, timeout_sec=0.0)
-                haptic_position = node.position
-                cursor_pos = pygame.Rect(haptic_position[0],haptic_position[2],cursor_len,cursor_len)
-                screen.blit(cursor, cursor_pos)
-
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:
+                # Checks for events in the pygame object
+                for event in pygame.event.get():    
+                    if event.type == pygame.QUIT:   # If the game is quit, the loop stops running
                         running_flag = False
-                    elif event.type == pygame.MOUSEBUTTONDOWN:      # Event: A mouse button was clicked
-                        if event.button== 1: # Left Mouse Button
-                            if next_button_box.collidepoint(event.pos):
-                                screen_index = screen_index + 1
-                                print(screen_index)
-                            else:
-                                draw_flag = True
-                    elif event.type == pygame.MOUSEBUTTONUP:
-                        draw_flag = False
-                        prev_drawn_line = 0
 
-                if node.force[1]>0 and node.button==True:          # If left mouse button is clicked, draws a connecting line on the drawn_lines surface
-                    cursor_pos_center = pygame.Vector2(cursor_pos[0] + cursor_len/2,cursor_pos[1] + cursor_len/2)
-                    if prev_drawn_line == 0:        # The first point of the stroke is made a circle to start
-                        pygame.draw.circle(drawn_lines, cursor_color, cursor_pos_center,line_width/2)
-                    else:               # Subsequent points of the stroke are connected with lines
-                        pygame.draw.line(drawn_lines, cursor_color, prev_drawn_line, cursor_pos_center, width=line_width)
-                    prev_drawn_line = cursor_pos_center     # Set current position as previous position to draw connecting line
-                else:
-                    prev_drawn_line = 0
+                match node.curr_screen_flag:       # Screen display for task
+                    case 0:
+                        # Displays all current surfaces to update graphics
+                        screen.fill(screen_color)
+        
+                        screen.blit(drawn_lines, (0,0))
+                        
+                        screen.blit(next_button, next_button_box)
+                        next_button.blit(next_button_text,next_button_text_box)
+        
+                        rclpy.spin_once(node, timeout_sec=0.0)
+                        haptic_position = node.position
+                        cursor_pos = pygame.Rect(haptic_position[0],haptic_position[2],cursor_len,cursor_len)
+                        screen.blit(cursor, cursor_pos)
+
+                        # Sketching game drawing
+                        # if node.force[1]>0 and node.button==True:          # If left mouse button is clicked, draws a connecting line on the drawn_lines surface
+                        #     cursor_pos_center = pygame.Vector2(cursor_pos[0] + cursor_len/2,cursor_pos[1] + cursor_len/2)
+                        #     if prev_drawn_line == 0:        # The first point of the stroke is made a circle to start
+                        #         pygame.draw.circle(drawn_lines, cursor_color, cursor_pos_center,line_width/2)
+                        #     else:               # Subsequent points of the stroke are connected with lines
+                        #         pygame.draw.line(drawn_lines, cursor_color, prev_drawn_line, cursor_pos_center, width=line_width)
+                        #     prev_drawn_line = cursor_pos_center     # Set current position as previous position to draw connecting line
+                        # else:
+                        #     prev_drawn_line = 0
+
+                        # Truss design drawing
+                        if node.force[1]>0 and node.button==True:          # If left mouse button is clicked, draws a connecting line on the drawn_lines surface
+                            cursor_pos_center = pygame.Vector2(cursor_pos[0] + cursor_len/2,cursor_pos[1] + cursor_len/2)
+                            if prev_drawn_line == 0:        # The first point of the stroke is made a circle to start
+                                pygame.draw.circle(drawn_lines, cursor_color, cursor_pos_center,line_width/2)
+                                start_point = cursor_pos_center
+                            prev_drawn_line = cursor_pos_center     # Set current position as previous position to draw connecting line
+                        elif prev_drawn_line is not 0:
+                            end_point = pygame.Vector2(cursor_pos[0] + cursor_len/2,cursor_pos[1] + cursor_len/2)
+                            pygame.draw.circle(drawn_lines,cursor_color,start_point, line_width/2)
+                            pygame.draw.line(drawn_lines, cursor_color, start_point, end_point, width=line_width)
+                            pygame.draw.circle(drawn_lines, cursor_color, end_point, line_width/2)
+                            pygame.draw.circle(drawn_lines, (255,0,0), start_point, line_width/4)
+                            pygame.draw.circle(drawn_lines, (255,0,0), end_point, line_width/4)
+                            prev_drawn_line = 0
+
+                        if next_button_box.collidepoint(cursor_pos.center):
+                            # Change color of button
+                            next_button.fill((155,0,0))
+                            next_button.blit(next_button_text,next_button_text_box) 
+                            if node.button == True:
+                                # update to the next screen
+                                node.curr_screen_flag = 1
+                        else:
+                            next_button.fill((255,0,0))
+                            next_button.blit(next_button_text,next_button_text_box)
+
+                    case 1:
+                        # Displays all current surfaces to update graphics
+                        screen.fill(screen_color)
+        
+                        rclpy.spin_once(node, timeout_sec=0.0)
+                        haptic_position = node.position
+                        cursor_pos = pygame.Rect(haptic_position[0],haptic_position[2],cursor_len,cursor_len)
+                        screen.blit(cursor, cursor_pos)
                 
                 pygame.display.update()
         
