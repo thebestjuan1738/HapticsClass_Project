@@ -4,7 +4,7 @@ from pathlib import Path
 import rclpy
 from rclpy.node import Node
 
-from std_msgs.msg import Float32, Int8
+from std_msgs.msg import Float32, Float64, Int8
 from geometry_msgs.msg import Point
 
 import sqlite3
@@ -20,6 +20,22 @@ class Database_Node(Node):
         self.subscriber_force = self.create_subscription(Point,'force_topic',self.callback_force,1)
         self.subscriber_time = self.create_subscription(Float32, 'time_topic',self.callback_time,1)
         self.subscriber_screen = self.create_subscription(Int8, 'screen_topic',self.callback_screen,1)
+
+        # Sensor topics from sensor_bridge (raw ADC counts). These do NOT decide when a row is
+        # written: each row just takes the latest value received (sample-and-hold). If the bridge
+        # isn't running, those columns are left empty (NULL) and everything else works as before.
+        self.sensor_values = {'eda': None, 'pulse': None, 'pressure': None, 'temp': None}
+        self.sensor_time = None     # Arduino clock [s] of the latest sensor sample
+        self.subscriber_eda = self.create_subscription(
+            Float32, 'eda_topic', lambda msg: self.callback_sensor('eda', msg), 1)
+        self.subscriber_pulse = self.create_subscription(
+            Float32, 'pulse_topic', lambda msg: self.callback_sensor('pulse', msg), 1)
+        self.subscriber_pressure = self.create_subscription(
+            Float32, 'pressure_topic', lambda msg: self.callback_sensor('pressure', msg), 1)
+        self.subscriber_temp = self.create_subscription(
+            Float32, 'temp_topic', lambda msg: self.callback_sensor('temp', msg), 1)
+        self.subscriber_sensor_time = self.create_subscription(
+            Float64, 'sensor_time_topic', self.callback_sensor_time, 1)
 
         # Connect to a new database
         self.declare_parameter('database_path', str(Path.cwd() / 'saved_databases' / 'test.db'))
@@ -41,8 +57,13 @@ class Database_Node(Node):
             z REAL NOT NULL,
             F_x REAL NOT NULL,
             F_y REAL NOT NULL,
-            F_z REAL NOT NULL
-            )                
+            F_z REAL NOT NULL,
+            eda REAL,
+            pulse REAL,
+            pressure REAL,
+            temp REAL,
+            sensor_time REAL
+            )
         """)
         self.conn.commit()
 
@@ -74,6 +95,13 @@ class Database_Node(Node):
         self.screen_bool = True
         self.buffer_sample()
 
+    def callback_sensor(self, name, sensor_msg):
+        # Only remembers the latest value; the next row written will pick it up
+        self.sensor_values[name] = sensor_msg.data
+
+    def callback_sensor_time(self, time_msg):
+        self.sensor_time = time_msg.data
+
     def buffer_sample(self):
         # Checks that data has been published for each table column
         if not (self.screen_bool        
@@ -87,7 +115,12 @@ class Database_Node(Node):
             self.screen,
             self.curr_time,
             *self.pos,
-            *self.force
+            *self.force,
+            self.sensor_values['eda'],      # latest sensor values (None -> NULL if not received)
+            self.sensor_values['pulse'],
+            self.sensor_values['pressure'],
+            self.sensor_values['temp'],
+            self.sensor_time
         ))
 
         # Resets the boolean checks for whether current data has been published
@@ -106,8 +139,9 @@ class Database_Node(Node):
             self.conn.executemany(      # Reads buffered data into db as row tuples
                 """
                 INSERT INTO data
-                    (screen, time, x, y, z, F_x, F_y, F_z)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (screen, time, x, y, z, F_x, F_y, F_z,
+                     eda, pulse, pressure, temp, sensor_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 self.pending_samples)
 
@@ -132,7 +166,10 @@ def main(args=None):
 
     finally:
         try:
-            node.close_database
+            # NOTE: this was `node.close_database` without (), which only referenced the method
+            # and never ran it, so the samples still buffered at Ctrl+C were never written and the
+            # database was never closed cleanly.
+            node.close_database()
         finally:
             node.destroy_node()
             rclpy.try_shutdown()

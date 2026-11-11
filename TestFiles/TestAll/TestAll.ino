@@ -10,9 +10,9 @@
   All grounds common. Wiring details are in README.md.
 
   Sampling: every sensor is read in the SAME tick (SAMPLE_RATE_HZ below:
-  1000 Hz on the R4, to match the haptics loop). Within a tick
+  500 Hz on the R4). Within a tick
   the four reads happen one after another, so they are offset by well under
-  1 ms. One discarded read precedes each real read so the shared ADC's
+  1 ms. Several discarded reads (SETTLE_READS) precede each real read so the shared ADC's
   sampling capacitor has settled on the new channel (matters for the
   high-impedance EDA and pressure nodes).
 
@@ -48,7 +48,7 @@
       acq_us      longest time (microseconds) a tick spent reading the four
                   sensors and running the pulse detector since the last
                   print. The budget is one tick: 1,000,000 / SAMPLE_RATE_HZ us
-                  (1000 us at 1 kHz).
+                  (2000 us at 500 Hz).
       tot_us      longest whole-tick time including printing, over the same
                   window (as of the previous tick). If acq_us is small but
                   tot_us is near 2000, printing is the bottleneck.
@@ -68,19 +68,19 @@
   Pulse timing: the detector runs at SAMPLE_RATE_HZ on the Arduino. The raw `pulse`
   channel is also logged at SAMPLE_RATE_HZ (when PRINT_EVERY_N is 1), so beats can be re-detected offline.
 
-  The sensor_bridge ROS node publishes each field as sensor/<field>. At 1000
-  lines/s x 18 fields that is about 18000 messages per second, which the
-  Python bridge may not keep up with; for this test, log with
-  plot_all.py --csv, or raise PRINT_EVERY_N.
+  This is a bench test with processed fields (smoothed, *_d, bpm). The ROS
+  sensor_bridge node is built for arduino_firmware/SensorPassthrough (raw
+  counts only). For this sketch, log with plot_all.py --csv.
 
   Only one program can hold the serial port (close the Serial Monitor first).
 
-  What we learned getting this to run at 1 kHz without overruns:
+  What we learned getting this to run at 1 kHz without overruns (it now runs at
+  500 Hz, which only gives more headroom):
     - Reading all four sensors plus the pulse detector takes only about 200 us
       per tick (acq_us). The cost was PRINTING, not sensing.
     - 35 separate Serial.print calls per line was too slow. printLine() now builds
       the line in a buffer with integer math and sends it with ONE Serial.write
-      (whole tick about 700 us of the 1000 us budget).
+      (whole tick about 700 us; the budget was 1000 us at 1 kHz, is 2000 us now).
     - DRY_RUN 1 separates the two costs: it samples at full rate and prints one
       summary line per second, so the acquisition time can be read on its own.
     - After a stall (for example the host stops reading and a USB write blocks)
@@ -116,7 +116,7 @@ const uint8_t  PULSE_SHIFT = ADC_BITS - 10;       // 14-bit -> 10-bit for the de
 
 // One sample rate for every sensor; all timing below is derived from it.
 #if ADC_BITS > 10
-  const uint16_t SAMPLE_RATE_HZ = 1000;   // R4: matches the haptics loop
+  const uint16_t SAMPLE_RATE_HZ = 500;    // R4 (it also ran clean at 1000)
 #else
   const uint16_t SAMPLE_RATE_HZ = 250;    // R3: analogRead is slow (~112 us each)
 #endif
@@ -220,9 +220,17 @@ void processPulse(int sig) {          // sig is on the 10-bit scale
   if (sinceBeat > 2500) resetDetector();
 }
 
-// One discarded read first so the ADC settles on the new channel.
+// The four channels share ONE ADC through a multiplexer. When it switches channel
+// its sampling capacitor still holds part of the previous channel's voltage, so
+// the first read after a switch is contaminated. Bench data showed the pressure
+// channel leaking about 7.5% into temperature (the channel read right after it)
+// with a single discarded read. SETTLE_READS throwaway reads let it settle first.
+// If channels still bleed into each other, raise this (or add 0.1 uF from the
+// affected pin to GND).
+const uint8_t SETTLE_READS = 3;
+
 int readAdc(uint8_t pin) {
-  analogRead(pin);
+  for (uint8_t i = 0; i < SETTLE_READS; i++) analogRead(pin);   // discarded
   return analogRead(pin);
 }
 
