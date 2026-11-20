@@ -3,8 +3,9 @@ from pathlib import Path
 
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 
-from std_msgs.msg import Float32, Float64, Int8
+from std_msgs.msg import Float32MultiArray, String, Float32, Float64
 from geometry_msgs.msg import Point
 
 import sqlite3
@@ -16,10 +17,8 @@ class Database_Node(Node):
         super().__init__('database_node')
 
         # Initialize node subscribers
-        self.subscriber_pos = self.create_subscription(Point,'pos_topic',self.callback_pos,1)
-        self.subscriber_force = self.create_subscription(Point,'force_topic',self.callback_force,1)
-        self.subscriber_time = self.create_subscription(Float32, 'time_topic',self.callback_time,1)
-        self.subscriber_screen = self.create_subscription(Int8, 'screen_topic',self.callback_screen,1)
+        self.subscriber_pos = self.create_subscription(Float32MultiArray,'haptic_topic',self.callback_pos, qos_profile_sensor_data)
+        self.subscriber_screen = self.create_subscription(String, 'interface_topic',self.callback_screen, qos_profile_sensor_data)
 
         # Sensor topics from sensor_bridge (raw ADC counts). These do NOT decide when a row is
         # written: each row just takes the latest value received (sample-and-hold). If the bridge
@@ -52,75 +51,69 @@ class Database_Node(Node):
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             screen INTEGER NOT NULL,
             time REAL NOT NULL,
+            button BOOL NOT NULL,
             x REAL NOT NULL,
             y REAL NOT NULL,
             z REAL NOT NULL,
+            yaw REAL NOT NULL,
+            pitch REAL NOT NULL,
+            roll REAL NOT NULL,
             F_x REAL NOT NULL,
             F_y REAL NOT NULL,
             F_z REAL NOT NULL,
             eda REAL,
             pulse REAL,
-            pressure REAL,
             temp REAL,
-            sensor_time REAL
             )
         """)
         self.conn.commit()
 
         # Saving a published chunk of data periodically
         self.pending_samples = []   # Initializing vector of tupled samples
-        self.screen_bool = False    # Initializing boolean checks for data being published
-        self.time_bool = False
-        self.pos_bool = False
-        self.force_bool = False
+        self.haptic_bool = False    # Initializing boolean checks for data being published
+        self.interface_bool = False
+        self.sensor_bool = False
         self.save_timer = self.create_timer(0.05, self.save_samples)
 
-    def callback_pos(self, pos_msg):
-        self.pos = [pos_msg.x,pos_msg.y,pos_msg.z]
-        self.pos_bool = True
-        self.buffer_sample()
+    def callback_haptics(self,msg):
+        self.position = msg.data[0:3]
+        self.rotation = msg.data[3:6]
+        self.force = msg.data[6:9]
+        self.time = msg.data[9]
+        self.button = bool(msg.data[10])
 
-    def callback_force(self, force_msg):
-        self.force = [force_msg.x,force_msg.y,force_msg.z]
-        self.force_bool = True
-        self.buffer_sample()
+        self.haptic_bool = True
 
-    def callback_time(self, time_msg):
-        self.curr_time = time_msg.data
-        self.time_bool = True
-        self.buffer_sample()
-
-    def callback_screen(self, screen_msg):
-        self.screen = screen_msg.data
-        self.screen_bool = True
-        self.buffer_sample()
+    def callback_interface(self,msg):
+        self.curr_screen = msg.data[0]
+        self.interface_bool = True
 
     def callback_sensor(self, name, sensor_msg):
         # Only remembers the latest value; the next row written will pick it up
         self.sensor_values[name] = sensor_msg.data
+        if not (self.sensor_values['eda'] and self.sensor_values['pulse'] and self.sensor_values['temp']):
+            return
+        else:
+            self.sensor_bool = True
 
-    def callback_sensor_time(self, time_msg):
-        self.sensor_time = time_msg.data
+    # def callback_sensor_time(self, time_msg):
+    #     self.sensor_time = time_msg.data
 
     def buffer_sample(self):
         # Checks that data has been published for each table column
-        if not (self.screen_bool        
-                and self.time_bool
-                and self.pos_bool
-                and self.force_bool):
+        if not (self.haptic_bool and self.interface_bool and self.sensor_bool):
             return
         
         # Adds a new tuple of data to pending_samples
         self.pending_samples.append((
             self.screen,
-            self.curr_time,
-            *self.pos,
+            self.time,
+            self.button,
+            *self.position,
             *self.force,
             self.sensor_values['eda'],      # latest sensor values (None -> NULL if not received)
             self.sensor_values['pulse'],
-            self.sensor_values['pressure'],
             self.sensor_values['temp'],
-            self.sensor_time
         ))
 
         # Resets the boolean checks for whether current data has been published
@@ -139,9 +132,8 @@ class Database_Node(Node):
             self.conn.executemany(      # Reads buffered data into db as row tuples
                 """
                 INSERT INTO data
-                    (screen, time, x, y, z, F_x, F_y, F_z,
-                     eda, pulse, pressure, temp, sensor_time)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (screen, time, x, y, z, yaw, pitch, roll, F_x, F_y, F_z, eda, pulse, temp)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 self.pending_samples)
 
