@@ -1,20 +1,20 @@
 /*
-  TestAll.ino - all four sensors sampled together at one rate
+  TestAll.ino - all three sensors sampled together at one rate
   Board: Arduino Uno R4 Minima (built for 14-bit ADC; the R3 also builds, at 10-bit)
 
   Sensors and pins:
     EDA (ODAX)            VOUT      -> A0
     Pulse sensor          purple    -> A1   (red -> 5V, black -> GND)
-    Pressure (FSR, 1k)    divider   -> A2   (5V -- FSR --+-- 1k -- GND, A2 at the +)
-    Temperature (LilyPad) S tab     -> A3   (+ -> 3.3V, - -> GND)
-  All grounds common. Wiring details are in README.md.
+    Temperature (LilyPad) S tab     -> A2   (+ -> 3.3V, - -> GND)
+  All grounds common. Wiring details are in README.md. The pressure sensor was
+  removed (its press/release current spiked the pulse signal), and A3 is unused.
 
   Sampling: every sensor is read in the SAME tick (SAMPLE_RATE_HZ below:
   500 Hz on the R4). Within a tick
-  the four reads happen one after another, so they are offset by well under
+  the three reads happen one after another, so they are offset by well under
   1 ms. Several discarded reads (SETTLE_READS) precede each real read so the shared ADC's
   sampling capacitor has settled on the new channel (matters for the
-  high-impedance EDA and pressure nodes).
+  high-impedance EDA node).
 
   Resolution: all raw channels are logged at 14-bit on the R4 (counts
   0-16383), 10-bit on the R3. The pulse beat detector below was tuned in
@@ -27,7 +27,7 @@
 
   Output (one line per print):
     ms:..,ovr:..,eda:..,eda_s:..,eda_d:..,pulse:..,bpm:..,ibi:..,beat:..,
-    force:..,force_s:..,force_d:..,force_rate:..,temp:..,temp_c:..,temp_d:..
+    temp:..,temp_c:..,temp_d:..
       ms          millis() at print time
       ovr         number of schedule slips so far: a tick that started a whole
                   period late, after which the missed ticks are skipped and
@@ -40,12 +40,9 @@
                   0 until it locks on. bpm is a 10-beat average (see README
                   for its known limits under motion)
       beat        1 on the line where a beat was just detected, else 0
-      force       raw counts          force_s smoothed (about 25 ms)
-      force_d     force_s minus its value at startup
-      force_rate  change in force_s in counts/second over 100 ms
       temp        raw counts          temp_c  smoothed temperature in C
       temp_d      temp_c minus its value at startup
-      acq_us      longest time (microseconds) a tick spent reading the four
+      acq_us      longest time (microseconds) a tick spent reading the three
                   sensors and running the pulse detector since the last
                   print. The budget is one tick: 1,000,000 / SAMPLE_RATE_HZ us
                   (2000 us at 500 Hz).
@@ -60,8 +57,8 @@
   stays 0 in a dry run, acquisition alone is fast enough and the overruns come
   from printing.
 
-  Startup: keep the EDA electrodes on, the pressure sensor unloaded, and the
-  temperature sensor in place for the first 2 seconds after reset, because the
+  Startup: keep the EDA electrodes on and the temperature sensor in place for
+  the first 2 seconds after reset, because the
   *_d fields are measured against that moment. Press reset to re-zero. (The R4
   does not reset when the serial port opens.)
 
@@ -76,7 +73,7 @@
 
   What we learned getting this to run at 1 kHz without overruns (it now runs at
   500 Hz, which only gives more headroom):
-    - Reading all four sensors plus the pulse detector takes only about 200 us
+    - Reading all the sensors plus the pulse detector takes only about 200 us
       per tick (acq_us). The cost was PRINTING, not sensing.
     - 35 separate Serial.print calls per line was too slow. printLine() now builds
       the line in a buffer with integer math and sends it with ONE Serial.write
@@ -95,8 +92,7 @@
 
 const uint8_t  EDA_PIN    = A0;
 const uint8_t  PULSE_PIN  = A1;
-const uint8_t  FORCE_PIN  = A2;
-const uint8_t  TEMP_PIN   = A3;
+const uint8_t  TEMP_PIN   = A2;
 
 const float    ADC_REF_VOLTS = 5.0;
 
@@ -123,23 +119,15 @@ const uint8_t  PULSE_SHIFT = ADC_BITS - 10;       // 14-bit -> 10-bit for the de
 const uint32_t SAMPLE_PERIOD_US = 1000000UL / SAMPLE_RATE_HZ;
 const uint16_t TICK_MS          = SAMPLE_PERIOD_US / 1000;   // detector clock step (rate must divide 1000)
 const uint16_t TARE_MS          = 2000;           // startup reference measurement
-const uint16_t RATE_PERIOD_MS   = 100;            // window for force_rate
 
 // Smoothing: time constants, converted to a per-tick factor at the chosen rate
 const float DT_S        = SAMPLE_PERIOD_US / 1000000.0;
 const float EDA_ALPHA   = DT_S / 0.200;   // 0.2 s time constant
-const float FORCE_ALPHA = DT_S / 0.025;   // 25 ms
 const float TEMP_ALPHA  = DT_S / 0.200;   // 0.2 s
 
 // Smoothed channels and their startup references
 float edaS = 0,   edaBase = 0;
-float forceS = 0, forceBase = 0;
 float tempS = 0,  tempBaseC = 0;
-
-// force_rate
-float    forceRate = 0;
-float    forceRef  = 0;
-uint32_t lastRate  = 0;
 
 // Schedule
 uint32_t nextSampleUs = 0;
@@ -220,11 +208,11 @@ void processPulse(int sig) {          // sig is on the 10-bit scale
   if (sinceBeat > 2500) resetDetector();
 }
 
-// The four channels share ONE ADC through a multiplexer. When it switches channel
+// The three channels share ONE ADC through a multiplexer. When it switches channel
 // its sampling capacitor still holds part of the previous channel's voltage, so
-// the first read after a switch is contaminated. Bench data showed the pressure
-// channel leaking about 7.5% into temperature (the channel read right after it)
-// with a single discarded read. SETTLE_READS throwaway reads let it settle first.
+// the first read after a switch is contaminated (a channel with nothing connected
+// just echoes the one read before it). SETTLE_READS throwaway reads let it settle
+// first.
 // If channels still bleed into each other, raise this (or add 0.1 uF from the
 // affected pin to GND).
 const uint8_t SETTLE_READS = 3;
@@ -243,7 +231,6 @@ void setup() {
   Serial.begin(115200);
   pinMode(EDA_PIN, INPUT);
   pinMode(PULSE_PIN, INPUT);
-  pinMode(FORCE_PIN, INPUT);
   pinMode(TEMP_PIN, INPUT);
 #if ADC_BITS > 10
   analogReadResolution(ADC_BITS);
@@ -253,26 +240,22 @@ void setup() {
 
   // Startup reference for the *_d fields: average each channel for TARE_MS
   uint32_t start = millis();
-  float sumEda = 0, sumForce = 0, sumTemp = 0;
+  float sumEda = 0, sumTemp = 0;
   uint32_t n = 0;
   uint32_t t = micros();
   while (millis() - start < TARE_MS) {
     if ((int32_t)(micros() - t) >= 0) {
       t += SAMPLE_PERIOD_US;
       sumEda += readAdc(EDA_PIN);
-      sumForce += readAdc(FORCE_PIN);
       sumTemp += readAdc(TEMP_PIN);
       n++;
     }
   }
   edaS = edaBase = sumEda / n;
-  forceS = forceBase = sumForce / n;
   tempS = sumTemp / n;
   tempBaseC = countsToCelsius(tempS);
-  forceRef = forceS;
 
   resetDetector();
-  lastRate = millis();
   nextSampleUs = micros() + SAMPLE_PERIOD_US;
 }
 
@@ -317,7 +300,7 @@ void addFixed(float v, uint8_t decimals) {
   }
 }
 
-void printLine(uint32_t now, int eda, int pulse, int force, int temp) {
+void printLine(uint32_t now, int eda, int pulse, int temp) {
   float tempC = countsToCelsius(tempS);
   lineLen = 0;
   addStr("ms:");           addInt((long)now);
@@ -329,10 +312,6 @@ void printLine(uint32_t now, int eda, int pulse, int force, int temp) {
   addStr(",bpm:");         addInt(bpm);
   addStr(",ibi:");         addInt(bpm > 0 ? ibi : 0);
   addStr(",beat:");        addInt(beatLatch ? 1 : 0);
-  addStr(",force:");       addInt(force);
-  addStr(",force_s:");     addFixed(forceS, 1);
-  addStr(",force_d:");     addFixed(forceS - forceBase, 1);
-  addStr(",force_rate:");  addFixed(forceRate, 1);
   addStr(",temp:");        addInt(temp);
   addStr(",temp_c:");      addFixed(tempC, 2);
   addStr(",temp_d:");      addFixed(tempC - tempBaseC, 2);
@@ -350,21 +329,14 @@ void sampleAll() {
 
   int eda   = readAdc(EDA_PIN);
   int pulse = readAdc(PULSE_PIN);
-  int force = readAdc(FORCE_PIN);
   int temp  = readAdc(TEMP_PIN);
 
   edaS   += EDA_ALPHA   * (eda   - edaS);
-  forceS += FORCE_ALPHA * (force - forceS);
   tempS  += TEMP_ALPHA  * (temp  - tempS);
 
   processPulse(pulse >> PULSE_SHIFT);
 
   uint32_t now = millis();
-  if (now - lastRate >= RATE_PERIOD_MS) {
-    forceRate = (forceS - forceRef) * 1000.0 / (now - lastRate);
-    forceRef = forceS;
-    lastRate = now;
-  }
 
   uint32_t acq = micros() - t0;
   if (acq > acqMax) acqMax = acq;
@@ -382,7 +354,7 @@ void sampleAll() {
 #else
   if (++printCount >= PRINT_EVERY_N) {
     printCount = 0;
-    printLine(now, eda, pulse, force, temp);
+    printLine(now, eda, pulse, temp);
   }
 #endif
 

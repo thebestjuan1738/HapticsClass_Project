@@ -2,7 +2,7 @@
 
 The Arduino (arduino_firmware/SensorPassthrough) prints one line per sample as
 comma-separated ``label:value`` pairs, e.g.
-``ms:123456,ovr:0,eda:812,pulse:8190,pressure:35,temp:2451``.
+``ms:123456,ovr:0,eda:812,pulse:8190,temp:2451``.
 Anything that doesn't parse that way (startup banners, a half line after a
 reconnect) is ignored.
 
@@ -15,22 +15,38 @@ import threading
 import serial
 import serial.tools.list_ports
 
-# USB vendor IDs: Arduino, CH340 clones, FTDI
-_KNOWN_VIDS = (0x2341, 0x1A86, 0x0403)
+# USB vendor IDs. The Uno R4 Minima's USB-C port is native USB with the Arduino vendor
+# ID (0x2341, product 0x0069 normally, 0x0369 in bootloader mode). The others are
+# common clone chips (CH340, FTDI) and are only used if no real Arduino is plugged in.
+_ARDUINO_VID = 0x2341
+_CLONE_VIDS = (0x1A86, 0x0403)
 
 # Keys that are bookkeeping, not sensor values, when averaging samples together
 _LAST_VALUE_KEYS = ('ms', 'ovr')
 
 
-def find_port():
-    """Return the device path of the most likely Arduino, or None."""
+def find_port_info():
+    """Return (device, description) of the Arduino on USB, or (None, text about what was seen).
+
+    A real Arduino (vendor ID 0x2341, e.g. the Uno R4 Minima on its USB-C port) is
+    always preferred over clone chips. An unrelated serial device is never picked by
+    guessing: if nothing matches, set the node's `port` parameter explicitly.
+    """
     ports = list(serial.tools.list_ports.comports())
     for p in ports:
-        if 'arduino' in (p.description or '').lower() or p.vid in _KNOWN_VIDS:
-            return p.device
-    if len(ports) == 1:
-        return ports[0].device
-    return None
+        text = ' '.join(filter(None, (p.description, p.manufacturer))).lower()
+        if p.vid == _ARDUINO_VID or 'arduino' in text:
+            return p.device, p.description or 'Arduino'
+    for p in ports:
+        if p.vid in _CLONE_VIDS:
+            return p.device, '%s (clone chip, vendor 0x%04X)' % (p.description or 'serial', p.vid)
+    seen = ', '.join('%s [%s]' % (p.device, p.description or '?') for p in ports) or 'none'
+    return None, seen
+
+
+def find_port():
+    """Return the device path of the Arduino, or None."""
+    return find_port_info()[0]
 
 
 def parse_line(line):
@@ -98,15 +114,26 @@ class SerialReader:
         self._thread.join(timeout=2.0)
 
     def _run(self):
+        last_note = None
         while not self._stop.is_set():
-            port = self.port or find_port()
-            if port is None:
-                self._log('No serial port found, retrying...')
-                self._stop.wait(self.retry_s)
-                continue
+            if self.port:
+                port, how = self.port, 'configured port'
+            else:
+                port, how = find_port_info()
+                if port is None:
+                    note = ('No Arduino found on USB (port seen: %s). Plug in the board with a '
+                            'USB data cable, or set the `port` parameter (COM4 on Windows, '
+                            '/dev/ttyACM0 on Linux/WSL).' % how)
+                    if note != last_note:       # say it once, not every retry
+                        self._log(note)
+                        last_note = note
+                    self._stop.wait(self.retry_s)
+                    continue
+                how = 'auto-detected Arduino (%s)' % how
+            last_note = None
             try:
                 with serial.Serial(port, self.baud, timeout=0.1) as ser:
-                    self._log('Opened %s @ %d baud' % (port, self.baud))
+                    self._log('Opened %s, %s, @ %d baud' % (port, how, self.baud))
                     self.port_in_use = port
                     self.connected = True
                     ser.reset_input_buffer()   # drop stale bytes buffered before we opened

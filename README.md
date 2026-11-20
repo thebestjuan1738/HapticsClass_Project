@@ -12,35 +12,37 @@ Two parts: Arduino firmware that only samples and passes data through, and a ROS
 node that reads it over USB serial and publishes it.
 
 ### 1. Firmware: `arduino_firmware/SensorPassthrough/SensorPassthrough.ino`
-Samples the four sensors in the same tick at **500 Hz** (R4, 14-bit) and sends
+Samples the three sensors in the same tick at **500 Hz** (R4, 14-bit) and sends
 the **raw ADC counts** straight out the USB port. No smoothing, zeroing, beat
 detection or unit conversion happens on the board; that is all done later on
 the PC. One line per tick, newline terminated:
 ```
-ms:123456,ovr:0,eda:812,pulse:8190,pressure:35,temp:2451
+ms:123456,ovr:0,eda:812,pulse:8190,temp:2451
 ```
 | Pin | Sensor | Field |
 |---|---|---|
 | A0 | EDA (ODAX) | `eda` |
 | A1 | Pulse sensor | `pulse` |
-| A2 | Pressure FSR (5V -- FSR --+-- 1k -- GND, A2 at the +) | `pressure` |
-| A3 | LilyPad temperature (S tab; + to 3.3V) | `temp` |
+| A2 | LilyPad temperature (S tab; + to 3.3V) | `temp` |
+
+The pressure sensor was **removed**: its current step at every press and release
+put a spike (about 250-1600 counts) on the pulse trace. A3 is unused. Wire the
+pulse sensor straight to the board's pins, not through the breadboard.
 
 `ms` is the board's `millis()` and `ovr` counts times the sample schedule
 slipped (should stay 0). Converting counts downstream: `volts = counts * 5 /
 ADC_MAX` (16383 on the R4, 1023 on the R3), temperature `= (volts - 0.5) * 100`
-C, FSR ohms `= 1000 * (5 / volts - 1)`. Upload from the Arduino IDE (board:
+C. Upload from the Arduino IDE (board:
 Arduino UNO R4 Minima). An R3 also works, at 10-bit and 100 Hz.
 
 ### 2. Node: `sensor_node` (package `sensor_bridge`)
-Reads the serial port and publishes one `std_msgs/Float32` topic per sensor,
-named in the same style as the haptic topics:
+Reads the Arduino's USB-C serial port and publishes one `std_msgs/Float32` topic
+per sensor, named in the same style as the haptic topics:
 
 | Topic | Type | Content |
 |---|---|---|
 | `eda_topic` | Float32 | raw counts |
 | `pulse_topic` | Float32 | raw counts |
-| `pressure_topic` | Float32 | raw counts |
 | `temp_topic` | Float32 | raw counts |
 | `sensor_time_topic` | Float64 | the Arduino clock, seconds since it booted |
 
@@ -51,9 +53,10 @@ Parameters (set with `--ros-args -p name:=value` or as launch arguments):
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `port` | `''` | Serial port: `COM4` (Windows) or `/dev/ttyACM0` (Linux/WSL). Empty = auto-detect the Arduino. |
+| `port` | `''` | Serial port: `COM4` (Windows) or `/dev/ttyACM0` (Linux/WSL). Empty = auto-detect the Arduino by its USB vendor ID (0x2341, the R4 Minima on USB-C). It never guesses an unrelated device: if no Arduino is found it logs what it saw and keeps retrying. |
 | `baud` | `115200` | Ignored by the R4's native USB; matters for an R3. |
-| `publish_rate_hz` | `100.0` | Publish rate. 100 Hz matches `haptic_loop` (see below). `0` or less = publish every sample (500 Hz). |
+| `expected_sensors` | `[eda, pulse, temp]` | Fields the Arduino should send; the status log names any that are missing and flags unexpected ones. |
+| `publish_rate_hz` | `100.0` | Publish rate. `haptic_topic` and the database run at 20 Hz (see below). `0` or less = publish every sample (500 Hz). |
 | `sample_mode` | `latest` | What to publish when the Arduino is faster than `publish_rate_hz`: `latest` (newest raw sample), `mean` (average since last tick), `all` (every sample). |
 
 ```
@@ -86,34 +89,50 @@ restart WSL). Only one program can hold the port, so close the Arduino IDE
 Serial Monitor and the plotters first. If ROS runs natively on Windows, use the
 COM name.
 
-### How it lines up with the database (`save_data`)
-- `haptic_loop` publishes `pos_topic`, `force_topic` and `time_topic` from a
-  0.01 s timer, i.e. **100 Hz**. The bridge's default `publish_rate_hz` is the
-  same, so every haptic sample has a sensor sample next to it.
-- `interface_loop` publishes `screen_topic` at 20 Hz (0.05 s timer).
-- `database_loop` writes a row only when it has received one new message on each
-  of its four topics, so it stores about **20 rows/s** (limited by
-  `screen_topic`), with columns `screen, time, x, y, z, F_x, F_y, F_z`.
-- The database node also subscribes to the sensor topics and stores them in the
-  extra columns `eda, pulse, pressure, temp` (raw ADC counts) and `sensor_time`
-  (the Arduino clock in seconds). They are **sample-and-hold**: they do not
-  decide when a row is written, so the row rate is still set by the four
-  original topics (about 20 rows/s). Each row just takes the latest sensor value
-  received (at most about 10 ms old at the 100 Hz publish rate). If the bridge
-  is not running, those columns are NULL and the rest of the row is unchanged.
-  Because rows are written at 20 Hz, the database holds 1 in 5 of the 100 Hz
-  sensor samples; the bag has all of them.
-- **Fix made to `database_loop.py`:** `main()` called `node.close_database`
-  without parentheses, so the cleanup never ran: samples still buffered at
-  Ctrl+C (up to about 50 ms worth) were never written and the database was never
-  closed cleanly. It is now `node.close_database()`.
+### How it lines up with the rest of the system
+- `haptic_loop` publishes one `haptic_topic` (a `Float32MultiArray`: x, y, z,
+  yaw, pitch, roll, F_x, F_y, F_z, time, button) every 0.05 s, i.e. **20 Hz**,
+  and listens to `interface_topic`. `interface_loop` publishes `interface_topic`
+  (a string: `design`, `rest`, `report`, `eval` or `disp_eval`) at 20 Hz.
+- The bridge's default `publish_rate_hz` is 100, an exact multiple of 20. The
+  database holds the latest sensor value, so it is never more than about 10 ms
+  old. Use `publish_rate_hz:=20` to match the haptic rate exactly.
+- `database_loop` writes **one row per `haptic_topic` message (about 20 rows/s)**
+  with columns `screen, time, button, x, y, z, yaw, pitch, roll, F_x, F_y, F_z,
+  eda, pulse, temp`. `screen` is text (the full screen name). `eda`, `pulse` and
+  `temp` are raw ADC counts from the bridge, **sample-and-hold**: they never
+  decide when a row is written.
+- **It checks every sensor.** With the default `require_sensors:=true`, no row is
+  written until `eda`, `pulse` and `temp` have each reported at least once, and
+  the log names the missing one every 5 s ("no data yet from sensor(s): temp ...
+  NO ROWS ARE BEING SAVED"). It also warns when a sensor stops updating for more
+  than 2 s (rows would repeat its last value), and when `interface_topic` or
+  `haptic_topic` are silent. Set `require_sensors:=false` to record the haptic data
+  anyway with empty (NULL) sensor columns.
+- The bridge does the same check on its side (`expected_sensors`, default
+  `eda, pulse, temp`): it logs which of them the Arduino has not sent, and flags a
+  field it did not expect (for example `pressure` from old firmware).
+- Because rows are written at 20 Hz, the database holds 1 in 5 of the 100 Hz
+  sensor samples; a bag has all of them. 20 Hz is too coarse to find heartbeats
+  in the database's `pulse` column, so for heart rate use the bag or the CSV logs
+  (500 Hz) instead.
+- **Fixes made to `database_loop.py`** (it was mid-edit and would not start): the
+  `CREATE TABLE` had a trailing comma; the subscriptions pointed at callbacks that
+  did not exist (`callback_pos`, `callback_screen`, `callback_sensor_time`); nothing
+  ever called `buffer_sample`; the insert had 15 placeholders for 14 columns and
+  left out `button` and the rotation; a sensor reading of exactly 0 counted as
+  "missing"; the screen name was stored as its first character; and `main()` called
+  `node.close_database` without parentheses, so buffered rows were lost on Ctrl+C.
+- **Not changed, but worth knowing** (`haptic_loop.py`): `interface_callback`
+  stores `msg.data[0]`, the first character of the screen name, so
+  `curr_screen == "rest"` can never be true. If that were fixed, the `rest` branch
+  of `update_haptics` would crash, because it uses `position`, `curr_time` and
+  `button_pressed` before they are assigned.
 - **Clocks differ:** the database `time` is `perf_counter` since `haptic_loop`
-  started, while `sensor_time_topic` is the Arduino's own clock. They share no
-  zero point, so line streams up by arrival time (a bag, or the database node
-  holding the latest sensor value when it writes a row), not by these two
-  numbers.
+  started, and the Arduino's clock (`sensor_time_topic`, not stored in the
+  database) shares no zero point with it. Line streams up by arrival time.
 - A bag records everything on one clock:
-  `ros2 bag record /pos_topic /force_topic /time_topic /button_topic /eda_topic /pulse_topic /pressure_topic /temp_topic`
+  `ros2 bag record /haptic_topic /interface_topic /eda_topic /pulse_topic /temp_topic /sensor_time_topic`
 
 ## Bench tests (`TestFiles/`)
 Sketches used while building and checking each sensor. They are not needed to
@@ -125,13 +144,13 @@ run the bridge; the firmware above is.
   `raw:..,smoothed:..,delta:..,volts:..` at 115200 baud.
 - `TestFiles/TestPulse/TestPulse.ino` - pulse sensor on A1 (purple->A1,
   red->5V, black->GND). Lines are `ms:..,signal:..,bpm:..,ibi:..,beat:..`.
-- `TestFiles/TestPressure/TestPressure.ino` - pressure sensor on A2 (below).
+- `TestFiles/TestPressure/TestPressure.ino` - pressure sensor, **retired** from the main rig (below).
 
 Check any of them live with `python TestFiles/plot_serial.py`. All use the same
-`label:value` format and different pins (EDA A0, pulse A1, pressure A2).
+`label:value` format. Current rig: EDA A0, pulse A1, temperature A2.
 
 ### Temperature sensor (SparkFun LilyPad, DEV-08777)
-`TestFiles/TestTemp/TestTemp.ino`, on **A3**. Pads: S -> A3, + -> 3.3V, - -> GND.
+`TestFiles/TestTemp/TestTemp.ino`, on **A2**. Pads: S -> A2, + -> 3.3V, - -> GND.
 Prints `ms,raw,volts,temp_c,delta_c` at 10 Hz. From the SparkFun repo
 (sparkfun/LilyPad_Temperature_Sensor): the output is analog, 0.5 V at 0 C,
 0.75 V at 25 C, 10 mV per degree C, so `temp_c = (volts - 0.5) * 100`.
@@ -145,8 +164,8 @@ Prints `ms,raw,volts,temp_c,delta_c` at 10 Hz. From the SparkFun repo
 - `delta_c` is relative to the first second after reset (keep it in contact).
 
 ### Combined test: all sensors at 500 Hz (`TestAll.ino` + `plot_all.py`)
-`TestFiles/TestAll/TestAll.ino` samples EDA (A0), pulse (A1), pressure (A2) and
-temperature (A3) in the **same tick** at 500 Hz, 14-bit on the R4, and prints
+`TestFiles/TestAll/TestAll.ino` samples EDA (A0), pulse (A1) and
+temperature (A2) in the **same tick** at 500 Hz, 14-bit on the R4, and prints
 one line per tick. It was first run at 1000 Hz (clean, 0 overruns) and is now set
 to 500 Hz. The rate is one constant (`SAMPLE_RATE_HZ`); smoothing time constants, the pulse detector clock
 and the schedule all derive from it. The raw `pulse` channel is logged at the
@@ -159,12 +178,13 @@ python TestFiles/plot_all.py COM4 15 --csv      # also log every line to TestFil
 ```
 The title shows the measured lines/s and the Arduino's overruns since connect.
 Result: **0 overruns at 1 kHz** (the rate it was tested at before moving to 500 Hz). Fields: `ms, ovr, eda, eda_s, eda_d, pulse, bpm,
-ibi, beat, force, force_s, force_d, force_rate, temp, temp_c, temp_d, acq_us,
+ibi, beat, temp, temp_c, temp_d, acq_us,
 tot_us` (`*_d` are relative to the first 2 s after reset, so keep sensors in
-place and the pressure sensor unloaded then; press reset to re-zero).
+place then; press reset to re-zero). The dashboard shows EDA, pulse and
+temperature rows.
 
 What we learned getting there:
-- **Sensing was cheap, printing was not.** Reading all four sensors plus the
+- **Sensing was cheap, printing was not.** Reading all the sensors plus the
   pulse detector takes about 200 us per tick (`acq_us`). About 35 separate
   `Serial.print` calls per line caused the overruns. Each line is now built in a
   buffer with integer math and sent with one `Serial.write` (whole tick about
@@ -181,16 +201,17 @@ What we learned getting there:
   time and froze the plot at about 200 KB/s. `plot_all.py` reads on a background
   thread in bulk and thins the points it draws. `plot_serial.py` still uses
   `readline()`, so use it only for the slow single-sensor sketches.
-- **Channel crosstalk on the shared ADC.** All four sensors go through one ADC
-  and multiplexer, and its sampling capacitor keeps part of the previous
-  channel's voltage. With one discarded read per channel, a log showed the
-  pressure channel leaking about 7.5% into temperature (read right after it): at
-  rest temperature read about 2320 counts (22 C), and during hard presses it
-  averaged about 3124 (about 24 C too high). EDA, pulse and the others were clean
-  (correlation near 0). `SETTLE_READS` (now 3) sets the number of discarded
-  reads; if channels still bleed, raise it or add 0.1 uF from the affected pin to
-  GND. Check by pressing the pressure sensor with the temperature sensor steady
-  and watching `temp`.
+- **Channel crosstalk and the pressure sensor.** All the sensors go through one
+  ADC and multiplexer, whose sampling capacitor keeps part of the previous
+  channel's voltage, so a channel with nothing connected just echoes the one read
+  before it (tie unused read pins to GND). Earlier logs also showed the pressure
+  channel leaking about 7.5% into temperature, and, separately, a spike on the
+  pulse trace at every press and release (dip about 280-360 counts on press, bump
+  240-470, up to 1600, on release). More settle reads, a 3.3 V supply for the
+  divider and insulated pressing did not remove it, and with the pressure sensor
+  out the pulse signal was the cleanest of the project (about 1 mV noise, 990 mV
+  peak-to-peak heartbeat). So the pressure sensor was removed. `SETTLE_READS`
+  (now 3) sets the number of discarded reads.
 - **`ms` has 1 ms resolution**, so at 1 kHz it can repeat or skip a value by
   jitter. The board's `ms` restarts at 0 on reset; the CSV `pc_s` column gives
   PC time since logging started.
@@ -215,10 +236,10 @@ print rate, not the internal sampling rate.
 |---|---|---|---|---|
 | `TestFiles/TestEda` | A0 | 50 Hz (smoothing) | 10 Hz | 14-bit on R4, 10-bit on R3 |
 | `TestFiles/TestPressure` | A2 | 200 Hz | 50 Hz | 14-bit on R4, 10-bit on R3 |
-| `TestFiles/TestTemp` | A3 | 50 Hz (8-read average) | 10 Hz | 14-bit on R4, 10-bit on R3 |
+| `TestFiles/TestTemp` | A2 | 50 Hz (8-read average) | 10 Hz | 14-bit on R4, 10-bit on R3 |
 | `TestFiles/TestPulse` | A1 | 500 Hz | 50 Hz | 10-bit (kept at 10-bit, see below) |
-| `TestFiles/TestAll` (all four sensors) | A0-A3 | 500 Hz on R4 (250 Hz on R3) | 500 Hz | 14-bit on R4 (pulse detector fed 10-bit) |
-| `arduino_firmware/SensorPassthrough` (feeds the ROS node) | A0-A3 | 500 Hz on R4 (100 Hz on R3) | 500 Hz raw, node publishes 100 Hz | 14-bit on R4, 10-bit on R3 |
+| `TestFiles/TestAll` (EDA, pulse, temperature) | A0-A2 | 500 Hz on R4 (250 Hz on R3) | 500 Hz | 14-bit on R4 (pulse detector fed 10-bit) |
+| `arduino_firmware/SensorPassthrough` (feeds the ROS node) | A0-A2 | 500 Hz on R4 (100 Hz on R3) | 500 Hz raw, node publishes 100 Hz | 14-bit on R4, 10-bit on R3 |
 
 **Policy:** all raw data collection should use the **R4 at 14-bit** (counts
 0-16383, step about 0.3 mV at 5 V). The R3 and the 10-bit test sketches are for
@@ -237,8 +258,10 @@ Open items for later:
 - **EDA timing:** the printed `raw` is a fresh read at print time, separate from
   the 50 Hz smoothing samples.
 
-### Pressure sensor (square FSR) test sketch
-`TestFiles/TestPressure/TestPressure.ino`, on **A2** (EDA A0, pulse A1).
+### Pressure sensor (square FSR) test sketch (retired)
+Removed from the main rig (see the crosstalk note above); A2 is now the
+temperature sensor. Kept as a standalone bench test.
+`TestFiles/TestPressure/TestPressure.ino`, on **A2** when run by itself.
 Prints `ms,raw,smoothed,volts,fsr_kohm,delta,rate` at 50 Hz.
 `delta` is force relative to a no-load zero taken for 1 s after reset (keep the
 sensor unloaded; press reset to re-zero), and `rate` is counts/s over 100 ms.

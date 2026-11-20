@@ -6,11 +6,12 @@
           10 mV per degree C.   =>   temp_c = (volts - 0.5) * 100
 
   Wiring (3 pads on the LilyPad):
-    S tab (signal) -> A3
+    S tab (signal) -> A2
     + tab          -> 3.3V   (the SparkFun example code assumes 3.3V)
     - tab          -> GND
 
-  Pins in use across the test sketches: A0 EDA, A1 pulse, A2 pressure, A3 temp.
+  Pins in use across the sketches: A0 EDA, A1 pulse, A2 temp (the pressure sensor
+  was removed).
 
   NOTE: the SparkFun example converts counts with 3.3 V / 1023. That is only
   right if the ADC reference is 3.3 V on a 10-bit board. The R3/R4 ADC
@@ -45,7 +46,7 @@
   Only one program can hold the serial port (close the Serial Monitor first).
 */
 
-const uint8_t  TEMP_PIN         = A3;
+const uint8_t  TEMP_PIN         = A2;
 const float    ADC_REF_VOLTS    = 5.0;    // R3 and R4 default reference
 
 // ADC resolution: the R4 can read 14-bit (16x finer steps); the R3 is 10-bit.

@@ -1,15 +1,18 @@
 
+import time
 from pathlib import Path
 
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 
-from std_msgs.msg import Float32MultiArray, String, Float32, Float64
-from geometry_msgs.msg import Point
+from std_msgs.msg import Float32MultiArray, String, Float32
 
 import sqlite3
 
+SENSORS = ('eda', 'pulse', 'temp')      # raw ADC counts from sensor_bridge (A0, A1, A2)
+STATUS_PERIOD_S = 5.0                   # how often missing/stale inputs are reported
+STALE_AFTER_S = 2.0                     # a sensor with no new value this long is called stale
 
 
 class Database_Node(Node):
@@ -17,24 +20,27 @@ class Database_Node(Node):
         super().__init__('database_node')
 
         # Initialize node subscribers
-        self.subscriber_pos = self.create_subscription(Float32MultiArray,'haptic_topic',self.callback_pos, qos_profile_sensor_data)
-        self.subscriber_screen = self.create_subscription(String, 'interface_topic',self.callback_screen, qos_profile_sensor_data)
+        self.subscriber_haptics = self.create_subscription(Float32MultiArray,'haptic_topic',self.callback_haptics, qos_profile_sensor_data)
+        self.subscriber_interface = self.create_subscription(String, 'interface_topic',self.callback_interface, qos_profile_sensor_data)
 
         # Sensor topics from sensor_bridge (raw ADC counts). These do NOT decide when a row is
-        # written: each row just takes the latest value received (sample-and-hold). If the bridge
-        # isn't running, those columns are left empty (NULL) and everything else works as before.
-        self.sensor_values = {'eda': None, 'pulse': None, 'pressure': None, 'temp': None}
-        self.sensor_time = None     # Arduino clock [s] of the latest sensor sample
+        # written: each row just takes the latest value received (sample-and-hold). Default QoS
+        # (reliable) matches the bridge's publishers.
+        self.sensor_values = {name: None for name in SENSORS}
+        self.sensor_last_seen = {name: None for name in SENSORS}
         self.subscriber_eda = self.create_subscription(
             Float32, 'eda_topic', lambda msg: self.callback_sensor('eda', msg), 1)
         self.subscriber_pulse = self.create_subscription(
             Float32, 'pulse_topic', lambda msg: self.callback_sensor('pulse', msg), 1)
-        self.subscriber_pressure = self.create_subscription(
-            Float32, 'pressure_topic', lambda msg: self.callback_sensor('pressure', msg), 1)
         self.subscriber_temp = self.create_subscription(
             Float32, 'temp_topic', lambda msg: self.callback_sensor('temp', msg), 1)
-        self.subscriber_sensor_time = self.create_subscription(
-            Float64, 'sensor_time_topic', self.callback_sensor_time, 1)
+
+        # If True (default), no row is written until EVERY sensor above has reported at least
+        # once, so a sensor that is unplugged or left out cannot silently produce empty columns.
+        # The missing sensor is named in the log every few seconds. Set False to record the
+        # haptic data anyway and leave missing sensor columns empty (NULL).
+        self.declare_parameter('require_sensors', True)
+        self.require_sensors = bool(self.get_parameter('require_sensors').value)
 
         # Connect to a new database
         self.declare_parameter('database_path', str(Path.cwd() / 'saved_databases' / 'test.db'))
@@ -44,12 +50,12 @@ class Database_Node(Node):
         database_path.unlink(missing_ok=True)   # Deletes old database if file already present
 
         self.conn = sqlite3.connect(str(database_path))
-        
+
         # Build new database structure
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS data(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            screen INTEGER NOT NULL,
+            screen TEXT NOT NULL,
             time REAL NOT NULL,
             button BOOL NOT NULL,
             x REAL NOT NULL,
@@ -63,17 +69,17 @@ class Database_Node(Node):
             F_z REAL NOT NULL,
             eda REAL,
             pulse REAL,
-            temp REAL,
+            temp REAL
             )
         """)
         self.conn.commit()
 
         # Saving a published chunk of data periodically
         self.pending_samples = []   # Initializing vector of tupled samples
-        self.haptic_bool = False    # Initializing boolean checks for data being published
-        self.interface_bool = False
-        self.sensor_bool = False
+        self.curr_screen = None     # Latest screen name from the interface ('design', 'rest', ...)
+        self.rows_buffered = 0
         self.save_timer = self.create_timer(0.05, self.save_samples)
+        self.status_timer = self.create_timer(STATUS_PERIOD_S, self.report_status)
 
     def callback_haptics(self,msg):
         self.position = msg.data[0:3]
@@ -82,45 +88,67 @@ class Database_Node(Node):
         self.time = msg.data[9]
         self.button = bool(msg.data[10])
 
-        self.haptic_bool = True
+        # Each haptic message (20 Hz) is the time base: one message makes one row
+        self.buffer_sample()
 
     def callback_interface(self,msg):
-        self.curr_screen = msg.data[0]
-        self.interface_bool = True
+        self.curr_screen = msg.data     # the whole string; msg.data[0] would be one character
 
     def callback_sensor(self, name, sensor_msg):
         # Only remembers the latest value; the next row written will pick it up
         self.sensor_values[name] = sensor_msg.data
-        if not (self.sensor_values['eda'] and self.sensor_values['pulse'] and self.sensor_values['temp']):
-            return
-        else:
-            self.sensor_bool = True
+        self.sensor_last_seen[name] = time.monotonic()
 
-    # def callback_sensor_time(self, time_msg):
-    #     self.sensor_time = time_msg.data
+    def missing_sensors(self):
+        # `is None`, not falsiness: a reading of exactly 0.0 is real data
+        return [name for name in SENSORS if self.sensor_values[name] is None]
 
     def buffer_sample(self):
         # Checks that data has been published for each table column
-        if not (self.haptic_bool and self.interface_bool and self.sensor_bool):
+        if self.curr_screen is None:
             return
-        
-        # Adds a new tuple of data to pending_samples
+        if self.require_sensors and self.missing_sensors():
+            return
+
+        # Adds a new tuple of data to pending_samples (same order as the INSERT in save_samples)
         self.pending_samples.append((
-            self.screen,
+            self.curr_screen,
             self.time,
             self.button,
             *self.position,
+            *self.rotation,
             *self.force,
             self.sensor_values['eda'],      # latest sensor values (None -> NULL if not received)
             self.sensor_values['pulse'],
             self.sensor_values['temp'],
         ))
+        self.rows_buffered += 1
 
-        # Resets the boolean checks for whether current data has been published
-        self.screen_bool = False      
-        self.time_bool = False
-        self.pos_bool = False
-        self.force_bool = False
+    def report_status(self):
+        # Say out loud why rows are not being written, instead of failing silently
+        problems = []
+        missing = self.missing_sensors()
+        if missing:
+            problems.append("no data yet from sensor(s): %s (is sensor_bridge running and "
+                            "is the Arduino connected?)%s" % (
+                                ', '.join(missing),
+                                ' - NO ROWS ARE BEING SAVED' if self.require_sensors else ''))
+        now = time.monotonic()
+        stale = [n for n in SENSORS
+                 if self.sensor_last_seen[n] is not None
+                 and now - self.sensor_last_seen[n] > STALE_AFTER_S]
+        if stale:
+            problems.append("sensor(s) stopped updating (rows hold the last value): %s"
+                            % ', '.join(stale))
+        if self.curr_screen is None:
+            problems.append("no message yet on interface_topic (is interface_node running?) - "
+                            "NO ROWS ARE BEING SAVED")
+        if not hasattr(self, 'position'):
+            problems.append("no message yet on haptic_topic (is haptic_loop running?)")
+        if problems:
+            self.get_logger().warn('; '.join(problems))
+        else:
+            self.get_logger().info('Rows buffered so far: %d' % self.rows_buffered)
 
     def save_samples(self):
         # Nothing saved if no data is present
@@ -132,7 +160,8 @@ class Database_Node(Node):
             self.conn.executemany(      # Reads buffered data into db as row tuples
                 """
                 INSERT INTO data
-                    (screen, time, x, y, z, yaw, pitch, roll, F_x, F_y, F_z, eda, pulse, temp)
+                    (screen, time, button, x, y, z, yaw, pitch, roll, F_x, F_y, F_z,
+                     eda, pulse, temp)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 self.pending_samples)

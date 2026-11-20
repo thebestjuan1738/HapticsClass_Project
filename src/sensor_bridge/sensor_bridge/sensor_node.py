@@ -10,26 +10,36 @@ from sensor_bridge.serial_reader import SerialReader, reduce_samples
 
 SAMPLE_MODES = ('latest', 'mean', 'all')
 STATUS_PERIOD_S = 5.0
+# What the current rig has on the Arduino (arduino_firmware/SensorPassthrough):
+# A0 EDA, A1 pulse, A2 temperature. The pressure sensor was removed.
+DEFAULT_SENSORS = ['eda', 'pulse', 'temp']
 
 
 class Sensor_Node(Node):
     """Reads the Arduino's raw sensor stream over USB serial and publishes it.
 
-    One topic per sensor, named like the haptic node's topics:
-        eda_topic, pulse_topic, pressure_topic, temp_topic   (std_msgs/Float32,
-        raw ADC counts)
-        sensor_time_topic                                    (std_msgs/Float64,
-        the Arduino's clock in seconds)
-    Any other field the Arduino sends is published as <field>_topic.
+    The Arduino is the Uno R4 Minima on its USB-C port (native USB serial).
+    One topic per sensor:
+        eda_topic, pulse_topic, temp_topic   (std_msgs/Float32, raw ADC counts;
+                                              14-bit on the R4, 0-16383)
+        sensor_time_topic                    (std_msgs/Float64, the Arduino's
+                                              clock in seconds)
+    Any other field the Arduino sends is also published as <field>_topic.
 
     Parameters:
         port             serial port: COM4 (Windows), /dev/ttyACM0 (Linux/WSL).
-                         Empty = auto-detect the Arduino.
+                         Empty = auto-detect the Arduino (USB vendor ID 0x2341);
+                         an unrelated serial device is never picked by guessing.
         baud             serial speed (ignored by the R4's native USB)
-        publish_rate_hz  how often to publish. Default 100 Hz, the same rate
-                         haptic_loop publishes pos/force/time (its 0.01 s timer),
-                         so the streams line up row for row. 0 or negative =
-                         publish every Arduino sample (500 Hz).
+        expected_sensors fields the node expects the Arduino to send. If one never
+                         arrives (or an unexpected one does, e.g. 'pressure' from
+                         old firmware) the status log says so. Default
+                         ['eda', 'pulse', 'temp'].
+        publish_rate_hz  how often to publish. Default 100 Hz. haptic_topic and the
+                         database rows run at 20 Hz (0.05 s timers), and 100 is an
+                         exact multiple, so the value the database holds is never
+                         more than ~10 ms old. Use 20 to match them exactly. 0 or
+                         negative = publish every Arduino sample (500 Hz).
         sample_mode      what to publish at each tick when the Arduino is faster
                          than publish_rate_hz:
                            'latest'  the newest raw sample (nothing computed)
@@ -45,11 +55,14 @@ class Sensor_Node(Node):
         self.declare_parameter('baud', 115200, any_type)
         self.declare_parameter('publish_rate_hz', 100.0, any_type)
         self.declare_parameter('sample_mode', 'latest')
+        self.declare_parameter('expected_sensors', DEFAULT_SENSORS)
 
         port = str(self.get_parameter('port').value)
         baud = int(self.get_parameter('baud').value)
         rate_hz = float(self.get_parameter('publish_rate_hz').value)
         mode = str(self.get_parameter('sample_mode').value)
+        self.expected = [str(x) for x in self.get_parameter('expected_sensors').value]
+        self.unexpected_reported = set()
 
         if mode not in SAMPLE_MODES:
             self.get_logger().warn(
@@ -113,6 +126,12 @@ class Sensor_Node(Node):
             else:
                 pub = self.publishers_by_field.get(field)
                 if pub is None:
+                    if self.expected and field not in self.expected                             and field not in self.unexpected_reported:
+                        self.unexpected_reported.add(field)
+                        self.get_logger().warn(
+                            "Arduino sent '%s', which is not in expected_sensors %s "
+                            "(old firmware still on the board?). Publishing it anyway."
+                            % (field, self.expected))
                     topic = '%s_topic' % field
                     pub = self.create_publisher(Float32, topic, 10)
                     self.publishers_by_field[field] = pub
@@ -137,6 +156,12 @@ class Sensor_Node(Node):
                     (lines - self.status_lines) / dt,
                     (self.published - self.status_published) / dt,
                     self.reader.dropped, self.reader.rejected))
+            missing = [f for f in self.expected if f not in self.publishers_by_field]
+            if missing:
+                self.get_logger().warn(
+                    'Sensors not received from the Arduino yet: %s (expected %s, got %s). '
+                    'Check the wiring and that SensorPassthrough.ino is the sketch on the board.'
+                    % (', '.join(missing), self.expected, sorted(self.publishers_by_field)))
         self.status_lines = lines
         self.status_published = self.published
         self.status_time = now

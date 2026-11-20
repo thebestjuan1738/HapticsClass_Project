@@ -3,7 +3,6 @@ the derived / change-from-start value on the right.
 
     EDA          eda (raw) + eda_s (smoothed)   |  eda_d
     Pulse        pulse (+ red dots on beats)    |  bpm
-    Pressure     force (raw) + force_s          |  force_rate
     Temperature  temp_c                         |  temp_d
 
 Usage:  python plot_all.py [COMPORT] [window_seconds] [--csv [FILE]]
@@ -60,8 +59,6 @@ PANELS = [
      "counts", "counts vs start"),
     ("Pulse", [("pulse", "signal", GREEN)], [("bpm", "bpm", PURPLE)],
      "counts", "bpm"),
-    ("Pressure", [("force", "raw", GREY), ("force_s", "smoothed", BLUE)], [("force_rate", "rate", RED)],
-     "counts", "counts/s"),
     ("Temperature", [("temp_c", "temp", ORANGE)], [("temp_d", "change", RED)],
      "deg C", "deg C vs start"),
 ]
